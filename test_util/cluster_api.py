@@ -1,7 +1,5 @@
 import collections
-import copy
 import logging
-import uuid
 from contextlib import contextmanager
 from urllib.parse import urlparse, urlunparse
 
@@ -10,13 +8,23 @@ import dns.resolver
 import requests
 import retrying
 
-TEST_APP_NAME_FMT = '/integration-test-{}'
+import test_util.helpers
 
 
 class ClusterApi:
 
     adminrouter_master_port = {'http': 80, 'https': 443}
     adminrouter_agent_port = {'http': 61001, 'https': 61002}
+    request_methods = ['get', 'post', 'put', 'delete', 'patch', 'head', 'options']
+    api_path_map = {
+            'marathon': '/service/marathon/v2',
+            '3dt': '/system/health/v1',
+            'metronome': '/service/metronome/v1'}
+    service_req_headers = {'Accept': 'application/json, text/plain, */*'}
+
+    @classmethod
+    def api_path(cls, api, path):
+        return cls.api_path_map + path
 
     @retrying.retry(wait_fixed=1000,
                     retry_on_result=lambda ret: ret is False,
@@ -111,7 +119,7 @@ class ClusterApi:
     def _wait_for_srouter_slaves_endpoints(self):
         # Get currently known agents. This request is served straight from
         # Mesos (no AdminRouter-based caching is involved).
-        r = self.get('/mesos/master/slaves')
+        r = self.get(path='/mesos/master/slaves')
         assert r.status_code == 200
 
         data = r.json()
@@ -126,8 +134,7 @@ class ClusterApi:
             # slaves can be unknown here. For those, this endpoint
             # returns a 404. Retry in this case, until this endpoint
             # is confirmed to work for all known agents.
-            uri = '/slave/{}/slave%281%29/state.json'.format(slave_id)
-            r = self.get(uri)
+            r = self.get(path='/slave/{}/slave%281%29/state.json'.format(slave_id))
             if r.status_code == 404:
                 return False
             assert r.status_code == 200
@@ -139,7 +146,7 @@ class ClusterApi:
                     retry_on_result=lambda r: r is False,
                     retry_on_exception=lambda _: False)
     def _wait_for_metronome(self):
-        r = self.get('/service/metronome/v1/jobs')
+        r = self.get(path='/service/metronome/v1/jobs')
         # 500 and 504 are the expected behavior of a service
         # backend that is not up and running.
         if r.status_code == 500 or r.status_code == 504:
@@ -150,7 +157,8 @@ class ClusterApi:
     def wait_for_dcos(self):
         self._wait_for_leader_election()
         self._wait_for_adminrouter_up()
-        self._authenticate()
+        if self.auth_enabled and self.default_user:
+            self.authenticate_default_user()
         self._wait_for_marathon_up()
         self._wait_for_slaves_to_join()
         self._wait_for_dcos_history_up()
@@ -160,34 +168,13 @@ class ClusterApi:
     @retrying.retry(wait_fixed=2000, stop_max_delay=300 * 1000,
                     retry_on_result=lambda r: r is False,
                     retry_on_exception=lambda _: False)
-    def _authenticate(self):
-        if self.auth_enabled:
-            # token valid until 2036 for user albert@bekstil.net
-            # {
-            #   "email": "albert@bekstil.net",
-            #   "email_verified": true,
-            #   "iss": "https://dcos.auth0.com/",
-            #   "sub": "google-oauth2|109964499011108905050",
-            #   "aud": "3yF5TOSzdlI45Q1xspxzeoGBe9fNxm9m",
-            #   "exp": 2090884974,
-            #   "iat": 1460164974
-            # }
-            js = {'token': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImtpZCI6Ik9UQkVOakZFTWtWQ09VRTRPRVpGTlRNMFJrWXlRa015Tnprd1JrSkVRemRCTWpBM1FqYzVOZyJ9.eyJlbWFpbCI6ImFsYmVydEBiZWtzdGlsLm5ldCIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJpc3MiOiJodHRwczovL2Rjb3MuYXV0aDAuY29tLyIsInN1YiI6Imdvb2dsZS1vYXV0aDJ8MTA5OTY0NDk5MDExMTA4OTA1MDUwIiwiYXVkIjoiM3lGNVRPU3pkbEk0NVExeHNweHplb0dCZTlmTnhtOW0iLCJleHAiOjIwOTA4ODQ5NzQsImlhdCI6MTQ2MDE2NDk3NH0.OxcoJJp06L1z2_41_p65FriEGkPzwFB_0pA9ULCvwvzJ8pJXw9hLbmsx-23aY2f-ydwJ7LSibL9i5NbQSR2riJWTcW4N7tLLCCMeFXKEK4hErN2hyxz71Fl765EjQSO5KD1A-HsOPr3ZZPoGTBjE0-EFtmXkSlHb1T2zd0Z8T5Z2-q96WkFoT6PiEdbrDA-e47LKtRmqsddnPZnp0xmMQdTr2MjpVgvqG7TlRvxDcYc-62rkwQXDNSWsW61FcKfQ-TRIZSf2GS9F9esDF4b5tRtrXcBNaorYa9ql0XAWH5W_ct4ylRNl3vwkYKWa4cmPvOqT5Wlj9Tf0af4lNO40PQ'}  # noqa
-            if self.username and self.password:
-                js = {'uid': self.username, 'password': self.password}
-        else:
-            # no authentication required
+    def authenticate_default_user(self):
+        if not self.auth_enabled:
             return
-
-        r = requests.post(self.dcos_uri + '/acs/api/v1/auth/login', json=js)
-        # In the case of the Advanced Templates this endpoint comes up a bit later
-        if r.status_code >= 400:
-            return False
-        self.superuser_auth_header = {'Authorization': 'token=%s' % r.json()['token']}
-        self.superuser_auth_cookie = r.cookies['dcos-acs-auth-cookie']
+        return self.default_user.authenticate(self)
 
     def __init__(self, dcos_uri, masters, public_masters, slaves, public_slaves,
-                 dns_search_set, provider, auth_enabled, username, password):
+                 dns_search_set, provider, auth_enabled, default_user=None):
         """Proxy class for DC/OS clusters.
 
         Args:
@@ -210,132 +197,45 @@ class ClusterApi:
         self.dns_search_set = dns_search_set == 'true'
         self.provider = provider
         self.auth_enabled = auth_enabled
-        self.username = username
-        self.password = password
+        self.default_user = default_user
 
         assert len(self.masters) == len(self.public_masters)
 
         # URI must include scheme
         assert dcos_uri.startswith('http')
-        self.scheme = urlparse(dcos_uri).scheme
+        parse_result = urlparse(dcos_uri)
+        self.scheme = parse_result.scheme
+        self.dns_host = parse_result.netloc.split(':')[0]
 
         # Make URI never end with /
         self.dcos_uri = dcos_uri.rstrip('/')
 
-    @staticmethod
-    def _marathon_req_headers():
-        return {'Accept': 'application/json, text/plain, */*'}
+        for method in self.request_methods:
+            def wrapped_request(node=None, path="", params=None, user=None, **kwargs):
+                """Requests to DC/OS nodes (or dns if unset) using auth headers
+                from default_user (if set)
+                """
+                if node is None:
+                    node = self.dns_host
+                hdrs = {}
+                if self.default_user:
+                    hdrs = self.default_user.auth_header
+                hdrs.update(kwargs.pop('headers', {}))
+                url = self.get_url(node=node, path=path)
+                request_fn = getattr(requests, method)
+                return request_fn(url, params=params, headers=hdrs, **kwargs)
+            setattr(self, method, wrapped_request)
 
-    def _suheader(self, disable_suauth):
-        if not disable_suauth and self.auth_enabled:
-            return self.superuser_auth_header
-        return {}
-
-    def get(self, path="", params=None, disable_suauth=False, **kwargs):
-        hdrs = self._suheader(disable_suauth)
-        hdrs.update(kwargs.pop('headers', {}))
-        return requests.get(
-            self.dcos_uri + path, params=params, headers=hdrs, **kwargs)
-
-    def post(self, path="", payload=None, disable_suauth=False, **kwargs):
-        hdrs = self._suheader(disable_suauth)
-        hdrs.update(kwargs.pop('headers', {}))
-        if payload is None:
-            payload = {}
-        return requests.post(self.dcos_uri + path, json=payload, headers=hdrs)
-
-    def delete(self, path="", disable_suauth=False, **kwargs):
-        hdrs = self._suheader(disable_suauth)
-        hdrs.update(kwargs.pop('headers', {}))
-        return requests.delete(self.dcos_uri + path, headers=hdrs, **kwargs)
-
-    def head(self, path="", disable_suauth=False):
-        hdrs = self._suheader(disable_suauth)
-        return requests.head(self.dcos_uri + path, headers=hdrs)
-
-    def node_get(self, node, path="", params=None, disable_suauth=False, **kwargs):
-        """Execute a GET request against the adminrouter on node."""
-        hdrs = self._suheader(disable_suauth)
-        hdrs.update(kwargs.pop('headers', {}))
-
-        if node in self.masters:
-            port = self.adminrouter_master_port[self.scheme]
+    def get_url(self, node, path, port=None):
+        if node in self.masters or node == self.dns_host:
+            default_port = self.adminrouter_master_port[self.scheme]
         elif node in self.all_slaves:
-            port = self.adminrouter_agent_port[self.scheme]
+            default_port = self.adminrouter_agent_port[self.scheme]
         else:
             raise Exception('Node {} is not in the cluster.'.format(node))
-        url = urlunparse([self.scheme, ':'.join([node, str(port)]), path, None, None, None])
-        return requests.get(url, params=params, headers=hdrs, **kwargs)
-
-    def get_test_app(self, custom_port=False):
-        test_uuid = uuid.uuid4().hex
-        app = copy.deepcopy({
-            'id': TEST_APP_NAME_FMT.format(test_uuid),
-            'cpus': 0.1,
-            'mem': 32,
-            'instances': 1,
-            # NOTE: uses '.' rather than `source`, since `source` only exists in bash and this is
-            # run by sh
-            'cmd': '. /opt/mesosphere/environment.export && /opt/mesosphere/bin/python '
-                   '/opt/mesosphere/active/dcos-integration-test/python_test_server.py ',
-            'env': {
-                'DCOS_TEST_UUID': test_uuid
-            },
-            'healthChecks': [
-                {
-                    'protocol': 'HTTP',
-                    'path': '/ping',
-                    'portIndex': 0,
-                    'gracePeriodSeconds': 5,
-                    'intervalSeconds': 10,
-                    'timeoutSeconds': 10,
-                    'maxConsecutiveFailures': 3
-                }
-            ],
-        })
-
-        if not custom_port:
-            app['cmd'] += '$PORT0'
-            app['portDefinitions'] = [{
-                "protocol": "tcp",
-                "port": 0,
-                "name": "test"
-            }]
-
-        return app, test_uuid
-
-    def get_test_app_in_docker(self, ip_per_container):
-        app, test_uuid = self.get_test_app(custom_port=True)
-        assert 'portDefinitions' not in app
-        app['cmd'] += '9080'  # Fixed port for inside bridge networking or IP per container
-        app['container'] = {
-            'type': 'DOCKER',
-            'docker': {
-                # TODO(cmaloney): Switch to alpine with glibc
-                'image': 'debian:jessie',
-                'portMappings': [{
-                    'hostPort': 0,
-                    'containerPort': 9080,
-                    'protocol': 'tcp',
-                    'name': 'test',
-                    'labels': {}
-                }],
-
-            },
-            'volumes': [{
-                'containerPath': '/opt/mesosphere',
-                'hostPath': '/opt/mesosphere',
-                'mode': 'RO'
-            }]
-        }
-
-        if ip_per_container:
-            app['container']['docker']['network'] = 'USER'
-            app['ipAddress'] = {'networkName': 'dcos'}
-        else:
-            app['container']['docker']['network'] = 'BRIDGE'
-
-        return app, test_uuid
+        if port is None:
+            port = default_port
+        return urlunparse([self.scheme, ':'.join([node, str(port)]), path, None, None, None])
 
     def deploy_test_app_and_check(self, app, test_uuid):
         with self.marathon_deploy_and_cleanup(app) as service_points:
@@ -385,7 +285,8 @@ class ClusterApi:
             applications. I.E:
                 [Endpoint(host='172.17.10.202', port=10464), Endpoint(host='172.17.10.201', port=1630)]
         """
-        r = self.post('/marathon/v2/apps', app_definition, headers=self._marathon_req_headers())
+        r = self.post(
+            self.api_path('marathon', '/apps'), app_definition, headers=test_util.helpers.marathon_req_headers())
         logging.info('Response from marathon: {}'.format(repr(r.json())))
         assert r.ok
 
@@ -398,9 +299,9 @@ class ClusterApi:
             # future versions of Marathon:
             req_params = (('embed', 'apps.lastTaskFailure'),
                           ('embed', 'apps.counts'))
-            req_uri = '/marathon/v2/apps' + app_id
+            req_uri = self.api_path('marathon', '/apps' + app_id)
 
-            r = self.get(req_uri, req_params, headers=self._marathon_req_headers())
+            r = self.get(req_uri, req_params, headers=test_util.helpers.marathon_req_headers())
             assert r.ok
 
             data = r.json()
@@ -441,7 +342,7 @@ class ClusterApi:
                         retry_on_result=lambda ret: not ret,
                         retry_on_exception=lambda x: False)
         def _destroy_complete(deployment_id):
-            r = self.get('/marathon/v2/deployments', headers=self._marathon_req_headers())
+            r = self.get(self.api_path('marathon', '/deployments'), headers=self.service_req_headers)
             assert r.ok
 
             for deployment in r.json():
@@ -451,7 +352,7 @@ class ClusterApi:
             logging.info('Application destroyed')
             return True
 
-        r = self.delete('/marathon/v2/apps' + app_name, headers=self._marathon_req_headers())
+        r = self.delete(self.api_path('marathon', '/apps' + app_name), headers=self.service_req_headers)
         assert r.ok
 
         try:
@@ -475,7 +376,7 @@ class ClusterApi:
                         retry_on_result=lambda ret: not ret,
                         retry_on_exception=lambda x: False)
         def wait_for_completion():
-            r = self.get('/service/metronome/v1/jobs/' + job_id, {'embed': 'history'})
+            r = self.get(self.api_path('metronome', '/jobs/' + job_id), {'embed': 'history'})
             assert r.ok
             out = r.json()
             if not ignore_failures and (out['history']['failureCount'] != 0):
@@ -486,12 +387,12 @@ class ClusterApi:
             logging.info('Metronome one-off successful')
             return True
         logging.info('Creating metronome job: ' + repr(job_definition))
-        r = self.post('/service/metronome/v1/jobs', job_definition)
+        r = self.post(self.api_path('metronome', '/jobs'), job_definition)
         assert r.ok, r.json()
         logging.info('Starting metronome job')
-        r = self.post('/service/metronome/v1/jobs/{}/runs'.format(job_id))
+        r = self.post(self.api_path('metronome', '/jobs/{}/runs'.format(job_id)))
         assert r.ok, r.json()
         wait_for_completion()
         logging.info('Deleting metronome one-off')
-        r = self.delete('/service/metronome/v1/jobs/' + job_id)
+        r = self.delete(self.api_path('metronome', '/jobs/' + job_id))
         assert r.ok
