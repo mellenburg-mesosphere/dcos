@@ -197,6 +197,7 @@ class DcosCfSimple(CfStack):
 
 
 class DcosCfAdvanced(CfStack):
+    # TODO: make this class delete its own VPC, gateway, and subnets
     @classmethod
     def create(cls, stack_name, boto_wrapper, template_url,
                public_agents, private_agents, key_pair_name,
@@ -204,6 +205,16 @@ class DcosCfAdvanced(CfStack):
                vpc_cidr='10.0.0.0/16', public_subnet_cidr='10.0.128.0/20',
                private_subnet_cidr='10.0.0.0/17',
                gateway=None, vpc=None, private_subnet=None, public_subnet=None):
+        # Check that we have SSH info to provide before creating anything
+        try:
+            os_string = template_url.split('/')[-1].split('.')[-2].split('-')[0]
+            ssh_info = CF_OS_SSH_INFO[os_string]
+        except (KeyError, IndexError):
+            log.exception('Unexpected template URL: {}'.format(template_url))
+            if os_string:
+                log.exception('No SSH info for OS string: {}'.format(os_string))
+            raise
+
         ec2 = boto_wrapper.client('ec2')
         if not vpc:
             log.info('Creating new VPC...')
@@ -245,14 +256,6 @@ class DcosCfAdvanced(CfStack):
             'PrivateAgentInstanceType': private_agent_type,
             'PrivateSubnet': private_subnet}
         stack = boto_wrapper.create_stack(stack_name, template_url, parameters)
-        try:
-            os_string = template_url.split('/')[-1].split('.')[-2].split('-')[0]
-            ssh_info = CF_OS_SSH_INFO[os_string]
-        except (KeyError, IndexError):
-            log.exception('Unexpected template URL: {}'.format(template_url))
-            if os_string:
-                log.exception('No SSH info for OS string: {}'.format(os_string))
-            raise
         return cls(stack.stack.stack_name, boto_wrapper), ssh_info
 
     def delete(self, delete_vpc=False):

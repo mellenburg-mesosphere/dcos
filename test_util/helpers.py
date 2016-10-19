@@ -5,6 +5,8 @@ import copy
 import functools
 import logging
 import os
+import random
+import string
 import tempfile
 import time
 from collections import namedtuple
@@ -21,6 +23,23 @@ SshInfo = namedtuple('SshInfo', ['user', 'home_dir'])
 ADMINROUTER_PORT_MAPPING = {
     'master': {'http': 80, 'https': 443},
     'agent': {'http': 61001, 'https': 61002}}
+
+
+def random_id(n):
+    return ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(n))
+
+
+def session_tempfile(string):
+    with tempfile.NamedTemporaryFile(delete=False) as f:
+        f.write(string.encode())
+        temp_path = f.name
+
+    def remove_temp():
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
+    atexit.register(remove_temp)
+    return temp_path
 
 
 class DcosUser:
