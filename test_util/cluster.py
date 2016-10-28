@@ -6,7 +6,6 @@ import stat
 from contextlib import contextmanager
 from subprocess import CalledProcessError
 
-import passlib.hash
 from retrying import retry, RetryError
 
 import gen.calc
@@ -320,14 +319,8 @@ def install_dcos(
             tunnel=bootstrap_host_tunnel,
             installer_path=cluster.ssher.home_dir + '/dcos_generate_config.sh',
             download_url=installer_url)
-        if setup:
-            # only do on setup so you can rerun this test against a living installer
-            logging.info('Verifying installer password hashing')
-            test_pass = 'testpassword'
-            hash_passwd = installer.get_hashed_password(test_pass)
-            assert passlib.hash.sha512_crypt.verify(test_pass, hash_passwd), 'Hash does not match password'
-            if api:
-                installer.start_web_server()
+        if setup and api:
+            installer.start_web_server()
 
         with open(cluster.ssher.key_path, 'r') as key_fh:
             ssh_key = key_fh.read()

@@ -11,6 +11,7 @@ Options:
 # TODO: provide non-blocking deployment option. Requires dropping a setup script
 #  for the onprem case which does not die on SIG-HUP
 # TODO: add Azure
+# TODO: add function to return a config for a certain provider with defaults filled in
 import json
 import logging
 import os
