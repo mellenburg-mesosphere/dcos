@@ -11,9 +11,9 @@ Options:
 # TODO: provide non-blocking deployment option. Requires dropping a setup script
 #  for the onprem case which does not die on SIG-HUP
 # TODO: add Azure
+import json
 import logging
 import os
-import pprint
 import sys
 import yaml
 from docopt import docopt
@@ -253,7 +253,7 @@ def describe(info):
     else:
         raise Exception('Provider not recognized: {}'.format(info['provider']))
     info.update(extra_info)
-    pprint.pprint(info)
+    print(json.dumps(info, indent=4))
 
 
 def delete(info):
