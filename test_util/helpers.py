@@ -5,6 +5,8 @@ import copy
 import functools
 import logging
 import os
+import random
+import string
 import tempfile
 import time
 from collections import namedtuple
@@ -93,6 +95,18 @@ class ApiClient:
     delete = functools.partialmethod(api_request, 'delete')
 
 
+def lazy_property(property_fn):
+    cache_name = '{}_cached'.format(property_fn.__name__)
+
+    @property
+    @wraps(property_fn)
+    def _lazy_prop(self):
+        if not hasattr(self, cache_name):
+            setattr(self, cache_name, property_fn(self))
+        return getattr(self, cache_name)
+    return _lazy_prop
+
+
 def retry_boto_rate_limits(boto_fn, wait=2, timeout=60 * 60):
     """Decorator to make boto functions resilient to AWS rate limiting and throttling.
     If one of these errors is encounterd, the function will sleep for a geometrically
@@ -173,3 +187,7 @@ def session_tempfile(data):
     # Attempt to remove the file upon normal interpreter exit.
     atexit.register(remove_file)
     return temp_path
+
+
+def random_id(n):
+    return ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(n))
