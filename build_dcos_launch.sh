@@ -23,6 +23,6 @@ pushd /tmp/dcos-installer-build
 # Install the DC/OS tools
 pip install -e /tmp/dcos-installer-build
 cp gen/installer/bash/dcos-launch.spec ./
-pyinstaller dcos-launch.spec
+pyinstaller --log-level=DEBUG dcos-launch.spec
 popd
 cp /tmp/dcos-installer-build/dist/dcos-launch ./

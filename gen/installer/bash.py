@@ -638,11 +638,15 @@ def make_installer_docker(variant, bootstrap_id, installer_bootstrap_id):
 def make_dcos_launch():
     # NOTE: this needs to be kept in sync with build_dcos_launch.sh
     work_dir = py.path.local.mkdtemp()
+    if os.path.exists('ext/upstream'):
+        git_src = 'ext/upstream'
+    else:
+        git_src = 'file://{}'.format(os.getcwd())
+    subprocess.check_call(['git', 'clone', '--progress', git_src, str(work_dir)])
     work_dir.join('dcos-launch.spec').write(pkg_resources.resource_string(__name__, 'bash/dcos-launch.spec'))
-    work_dir.join('test_util').ensure(dir=True)
-    work_dir.join('test_util').join('launch.py').write(pkg_resources.resource_string('test_util', 'launch.py'))
     with work_dir.as_cwd():
-        subprocess.check_call(['pyinstaller', 'dcos-launch.spec'])
+        print(subprocess.check_output(['openssl', 'version']))
+        subprocess.check_call(['pyinstaller', '--log-level=DEBUG', 'dcos-launch.spec'])
     subprocess.check_call(['mv', str(work_dir.join('dist').join('dcos-launch')), "dcos-launch"])
     work_dir.remove()
 
