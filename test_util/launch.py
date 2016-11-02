@@ -1,11 +1,13 @@
 """DC/OS Launch
 
 Usage:
+  dcos-launch config [--config-path=<path>] CONFIG_TYPE
   dcos-launch create [--wait] [--dump-info=<path>] CLUSTER_CONFIG_PATH
   dcos-launch (describe|delete) CLUSTER_INFO_PATH
 
 Options:
   --dump-info=<path>   Use this path to dump the [default: cluster_info.json].
+  --config-path=<path> Use this path to dump the generated config file [default: config.yaml]
 """
 # TODO: provide onprem_provider option for spinning up onprem in aws, gce, etc
 # TODO: provide non-blocking deployment option. Requires dropping a setup script
@@ -27,6 +29,31 @@ from test_util.helpers import Host, random_id, session_tempfile, SshInfo
 LOGGING_FORMAT = '[%(asctime)s|%(name)s|%(levelname)s]: %(message)s'
 logging.basicConfig(format=LOGGING_FORMAT, level=logging.INFO)
 log = logging.getLogger('dcos-launch')
+
+
+SIMPLE_CF_CONFIG = {
+    'stack_name': 'DCOS-SimpleCF-{}'.format(random_id(10)),
+    'template_url': 'http://s3-us-west-2.amazonaws.com/downloads.dcos.io/dcos/testing/master/cloudformation/single-master.cloudformation.json',  # noqa
+    'num_public_agents': 0,
+    'num_private_agents': 0,
+    'admin_location': '0.0.0.0/0',
+    'key_pair_name': 'default'}
+
+ONPREM_CONFIG = {
+    'stack_name': 'DCOS-AWS-OnPrem-{}'.format(random_id(10)),
+    'installer_url': 'http://downloads.dcos.io/dcos/testing/master/dcos_generate_config.sh',
+    'num_public_agents': 0,
+    'num_private_agents': 0,
+    'admin_location': '0.0.0.0/0',
+    'key_pair_name': 'default',
+    'instance_type': 'm3.xlarge',
+    'instance_os': 'cent-os-7-dcos-prereqs',
+    'ssh_key_path': None,
+    'use_installer_api': True}
+
+DEFAULT_CONFIG = {
+    'aws': SIMPLE_CF_CONFIG,
+    'onprem': ONPREM_CONFIG}
 
 
 def check_keys(keys, my_dict, dict_name):
@@ -266,6 +293,12 @@ def delete(info):
 
 def main():
     args = docopt(__doc__, version='DC/OS Launch 1.0')
+
+    if args['config']:
+        with open(args['--config-path'], 'w') as fh:
+            yaml.dump(DEFAULT_CONFIG['CONFIG_TYPE'], fh)
+        sys.exit(0)
+
     if args['create']:
         cluster_info = provide_cluster(yaml.load(load_string(args['CLUSTER_CONFIG_PATH'])))
         write_json(args['--dump-info'], cluster_info)
