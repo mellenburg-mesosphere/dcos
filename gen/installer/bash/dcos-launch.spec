@@ -1,5 +1,9 @@
-# we shouldnt need to declare hiddenimports
-# https://github.com/pyinstaller/pyinstaller/issues/2185
+# Warning:
+#   - hidden import must be used as there is a bug in pyinstaller
+#     https://github.com/pyinstaller/pyinstaller/issues/2185
+#   - data must be decalared explicitly if not a .py file
+#   - Building will suck up the local SSL .so and package it
+#     with the final exe. Ensure build system has OpenSSL 1.0.2g
 a = Analysis(['test_util/launch.py'],
              hiddenimports=['html.parser'],
              datas=[('gen/ip-detect/*.sh', 'gen/ip-detect/')])

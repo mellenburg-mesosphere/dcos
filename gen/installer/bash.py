@@ -639,16 +639,15 @@ def make_dcos_launch():
     # NOTE: this needs to be kept in sync with build_dcos_launch.sh
     work_dir = py.path.local.mkdtemp()
     if os.path.exists('ext/upstream'):
-        git_src = 'ext/upstream'
+        git_src = 'file://{}/ext/upstream'.format(os.getcwd())
     else:
         git_src = 'file://{}'.format(os.getcwd())
     subprocess.check_call(['git', 'clone', '--progress', git_src, str(work_dir)])
     work_dir.join('dcos-launch.spec').write(pkg_resources.resource_string(__name__, 'bash/dcos-launch.spec'))
     with work_dir.as_cwd():
         subprocess.check_call(['pyinstaller', '--log-level=DEBUG', 'dcos-launch.spec'])
-        exe_path = str(work_dir.join('dist').join('dcos-launch'))
-        subprocess.check_call(['chmod', '+x', exe_path])
-        subprocess.check_call(['mv', exe_path, "dcos-launch"])
+    subprocess.check_call(['mv', str(work_dir.join('dist').join('dcos-launch')), 'dcos-launch'])
+    subprocess.check_call(['chmod', '+x', 'dcos-launch'])
     work_dir.remove()
 
     return "dcos-launch"
