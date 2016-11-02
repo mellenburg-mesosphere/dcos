@@ -645,9 +645,10 @@ def make_dcos_launch():
     subprocess.check_call(['git', 'clone', '--progress', git_src, str(work_dir)])
     work_dir.join('dcos-launch.spec').write(pkg_resources.resource_string(__name__, 'bash/dcos-launch.spec'))
     with work_dir.as_cwd():
-        print(subprocess.check_output(['openssl', 'version']))
         subprocess.check_call(['pyinstaller', '--log-level=DEBUG', 'dcos-launch.spec'])
-    subprocess.check_call(['mv', str(work_dir.join('dist').join('dcos-launch')), "dcos-launch"])
+        exe_path = str(work_dir.join('dist').join('dcos-launch'))
+        subprocess.check_call(['chmod', '+x', exe_path])
+        subprocess.check_call(['mv', exe_path, "dcos-launch"])
     work_dir.remove()
 
     return "dcos-launch"
