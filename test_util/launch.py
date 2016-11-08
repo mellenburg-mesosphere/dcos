@@ -16,6 +16,7 @@ Options:
 """
 import abc
 import json
+import os
 import sys
 import yaml
 from docopt import docopt
@@ -42,19 +43,24 @@ class AbstractLauncher(metaclass=abc.ABCMeta):
 
 
 class AwsLauncher(AbstractLauncher):
-    def __init__(self, aws_region, aws_access_key_id, aws_secret_access_key):
+    def __init__(self, aws_region, aws_access_key_id, aws_secret_access_key, config):
         self.boto_wrapper = BotoWrapper(aws_region, aws_access_key_id, aws_secret_access_key)
+        self.config = config
 
-    def create(self, cluster_config):
+    def create(self):
+        parameters = {k: str(v) for k, v in self.config['parameters'].items()}
         self.boto_wrapper.create_stack(
-            cluster_config['stack_name'], cluster_config['template_url'], cluster_config['parameters'])
+            self.config['stack_name'], self.config['template_url'], parameters)
         return {
-            'stack_name': cluster_config['stack_name'],
-            'launch_type': 'aws_simple'}
+            'cloudformation': {
+                'stack_name': self.config['stack_name'],
+                'region': self.config['region'],
+                'access_key_id': self.config['access_key_id'],
+                'secret_access_key': self.config['secret_access_key']}}
 
-    def wait(self, cluster_info):
+    def wait(self):
         # TODO: should this support the case where the cluster is being updated?
-        cf = self.get_stack(cluster_info)
+        cf = self.get_stack()
         status = cf.get_stack_details()['StackStatus']
         if status == 'CREATE_IN_PROGRESS':
             cf.wait_for_stack_creation(wait_for_poll_min=0)
@@ -64,29 +70,33 @@ class AwsLauncher(AbstractLauncher):
             raise Exception('')
         print('Cluster is ready!')
 
-    def describe(self, cluster_info):
-        cf = self.get_stack(cluster_info)
+    def describe(self):
+        cf = self.get_stack()
         return {
             'masters': convert_host_list(cf.get_master_ips()),
             'private_agents': convert_host_list(cf.get_private_agent_ips()),
             'public_agents': convert_host_list(cf.get_public_agent_ips())}
 
-    def delete(self, cluster_info):
-        self.get_stack(cluster_info).delete()
+    def delete(self):
+        self.get_stack().delete()
 
-    def get_stack(self, cluster_info):
-        return DcosCfSimple(cluster_info['stack_name'], self.boto_wrapper)
+    def get_stack(self):
+        """Returns the correct class interface depending how the AWS CF is configured
+        NOTE: only supports Simple Cloudformation currently
+        """
+        return DcosCfSimple(self.config['stack_name'], self.boto_wrapper)
 
 
 def get_launcher(config):
-    if 'aws_simple' in config:
-        aws_config = config['aws_simple']
-        assert 'region_name' in aws_config
+    """Returns a launcher given a python dictionary
+    """
+    if 'cloudformation' in config:
+        aws_config = config['cloudformation']
+        assert 'region' in aws_config
         assert 'access_key_id' in aws_config
         assert 'secret_access_key' in aws_config
-        return AwsLauncher(aws_config['region_name'], aws_config['access_key_id'], aws_config['secret_access_key'])
-    elif 'aws_advanced' in config:
-        raise NotImplementedError()
+        return AwsLauncher(
+            aws_config['region'], aws_config['access_key_id'], aws_config['secret_access_key'], aws_config)
     else:
         raise Exception('Unsupported configuration!')
 
@@ -97,27 +107,32 @@ def convert_host_list(host_list):
     return [{'private_ip': h.private_ip, 'public_ip': h.public_ip} for h in host_list]
 
 
+def do_create(config_path, info_path):
+    assert not os.path.exists(info_path), 'There is already a cluster info at {}'.format(info_path)
+    config = yaml.load(load_string(config_path))
+    assert 'this_is_a_temporary_config_format_do_not_put_in_production' in config
+    write_json(info_path, get_launcher(config).create())
+    return 0
+
+
 def main():
     args = docopt(__doc__, version='DC/OS Launch 1.0')
 
     if args['create']:
-        config = yaml.load(load_string(args['--config-path']))
-        assert 'this_is_a_temporary_config_format_do_not_put_in_production' in config
-        write_json(get_launcher.create())
-        sys.exit(0)
+        sys.exit(do_create(args['--config-path'], args['--info-path']))
 
     cluster_info = load_json(args['--info-path'])
 
     if args['wait']:
-        get_launcher.wait(cluster_info)
+        get_launcher(cluster_info).wait()
         sys.exit(0)
 
     if args['describe']:
-        print(json.dumps(get_launcher().describe(cluster_info), indent=4))
+        print(json.dumps(get_launcher(cluster_info).describe(), indent=4))
         sys.exit(0)
 
     if args['delete']:
-        get_launcher().delete(cluster_info)
+        get_launcher(cluster_info).delete()
         sys.exit(0)
 
 
