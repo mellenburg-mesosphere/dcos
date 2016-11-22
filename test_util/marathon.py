@@ -242,3 +242,12 @@ class Marathon(test_util.helpers.ApiClient):
         yield self.deploy_app(
             app_definition, timeout, check_health, ignore_failed_tasks)
         self.destroy_app(app_definition['id'], timeout)
+
+
+class ClusterMarathon(Marathon, test_util.helpers.NodeApiClient):
+    """Allows splitting out a Marathon instance while adding the
+    ClusterApi method for node awareness without invoking ClusterApi's
+    request wrapper (which would not point at marathon)
+    """
+    def __init__(self, *args, **kwargs):
+        test_util.helpers.NodeApiClient.__init__(self, *args, **kwargs)

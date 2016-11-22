@@ -46,7 +46,7 @@ def get_args_from_env():
         'ca_cert_path': os.getenv('DCOS_CA_CERT_PATH', None)}
 
 
-class ClusterApi(test_util.helpers.ApiClient):
+class ClusterApi(test_util.helpers.NodeApiClient):
 
     @retrying.retry(wait_fixed=1000,
                     retry_on_result=lambda ret: ret is False,
@@ -261,7 +261,8 @@ class ClusterApi(test_util.helpers.ApiClient):
         super().__init__(
             default_host_url=self.dcos_url,
             api_base=None,
-            ca_cert_path=ca_cert_path)
+            ca_cert_path=ca_cert_path,
+            get_node_url=self.get_node_url)
         self.masters = sorted(masters)
         self.public_masters = sorted(public_masters)
         self.slaves = sorted(slaves)
@@ -315,38 +316,23 @@ class ClusterApi(test_util.helpers.ApiClient):
             netloc = '{}:{}'.format(node, port)
         return '{}://{}'.format(self.scheme, netloc)
 
-    def extra_wrapper(self, orig_wrapper, request_fn, path, host_url=None, node=None, port=None, **kwargs):
-        """
-        Performs the same specialized request as ClusterApi but allows setting node
-        Args:
-            see ClusterApi for descriptions
-            node: host string corresponding to the ones stored in this object
-            port: if node is given, then a port can also be specified
-        """
-        if node is not None:
-            assert host_url is None, 'Cannot set both node and host_url'
-            host_url = self.get_node_url(node, port=port)
-        return orig_wrapper(request_fn, path, host_url=host_url, **kwargs)
-
     def get_client(self, path, default_headers=None):
-        new_client = test_util.helpers.ApiClient(
+        new_client = test_util.helpers.NodeApiClient(
             default_host_url=self.dcos_url,
             api_base=path,
             ca_cert_path=self.ca_cert_path,
+            get_node_url=self.get_node_url,
             default_headers=self.default_headers if default_headers is None else default_headers)
-        # give spawned clients the node= reqest option
-        new_client.extra_wrapper = self.extra_wrapper
         return new_client
 
     @property
     def marathon(self):
-        marathon_client = test_util.marathon.Marathon(
+        marathon_client = test_util.marathon.ClusterMarathon(
             default_host_url=self.dcos_url,
             default_os_user=self.default_os_user,
             default_headers=self.default_headers,
+            get_node_url=self.get_node_url,
             ca_cert_path=self.ca_cert_path)
-        # give spawned clients the node= request option
-        marathon_client.extra_wrapper = self.extra_wrapper
         return marathon_client
 
     @property

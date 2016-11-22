@@ -57,7 +57,7 @@ class ApiClient:
         self.default_headers = default_headers
         self.ca_cert_path = ca_cert_path
 
-    def request_wrapper(self, request_fn, path, host_url=None, **kwargs):
+    def wrapper(self, request_fn, path, host_url=None, **kwargs):
         """
         Makes a request with default headers + user auth headers if necessary
         If self.ca_cert_path is set, this method will pass it to requests
@@ -83,26 +83,40 @@ class ApiClient:
         logging.debug('Request headers: {}'.format(headers))
         return request_fn(request_url, headers=headers, **kwargs)
 
-    def extra_wrapper(self, orig_wrapper, request_fn, *args, **kwargs):
-        """Trivial wrapper to allow children and applications to change
-        wrapper behavior by overloading this method
-        """
-        return orig_wrapper(request_fn, *args, **kwargs)
+    get = functools.partialmethod(wrapper, requests.get)
+    post = functools.partialmethod(wrapper, requests.post)
+    put = functools.partialmethod(wrapper, requests.put)
+    delete = functools.partialmethod(wrapper, requests.delete)
+    options = functools.partialmethod(wrapper, requests.options)
+    head = functools.partialmethod(wrapper, requests.head)
+    patch = functools.partialmethod(wrapper, requests.patch)
+    delete = functools.partialmethod(wrapper, requests.delete)
 
-    def wrapped_request(self, request_fn, *args, **kwargs):
-        """Thin wrapper to allow wrapping requests dynamically by mapping
-        a function to self.request_wrapper
-        """
-        return self.extra_wrapper(self.request_wrapper, request_fn, *args, **kwargs)
 
-    get = functools.partialmethod(wrapped_request, requests.get)
-    post = functools.partialmethod(wrapped_request, requests.post)
-    put = functools.partialmethod(wrapped_request, requests.put)
-    delete = functools.partialmethod(wrapped_request, requests.delete)
-    options = functools.partialmethod(wrapped_request, requests.options)
-    head = functools.partialmethod(wrapped_request, requests.head)
-    patch = functools.partialmethod(wrapped_request, requests.patch)
-    delete = functools.partialmethod(wrapped_request, requests.delete)
+class NodeApiClient(ApiClient):
+    def __init__(self, get_node_url, *args, **kwargs):
+        """ ApiClient variant allowing node awareness into the requests wrapper
+        """
+        self._get_node_url = get_node_url
+        super().__init__(*args, **kwargs)
+
+    def wrapper(self, request_fn, path, host_url=None, node=None, port=None, **kwargs):
+        """If node kwarg is given, a URL will be fetched from _get_node_url instead
+        of using the default host url from ApiClient
+        """
+        if node is not None:
+            assert host_url is not None, 'Cannot set both node and host_url'
+            host_url = self._get_node_url(node, port)
+        super().wrapper(request_fn, path, host_url=host_url, **kwargs)
+
+    get = functools.partialmethod(wrapper, requests.get)
+    post = functools.partialmethod(wrapper, requests.post)
+    put = functools.partialmethod(wrapper, requests.put)
+    delete = functools.partialmethod(wrapper, requests.delete)
+    options = functools.partialmethod(wrapper, requests.options)
+    head = functools.partialmethod(wrapper, requests.head)
+    patch = functools.partialmethod(wrapper, requests.patch)
+    delete = functools.partialmethod(wrapper, requests.delete)
 
 
 def retry_boto_rate_limits(boto_fn, wait=2, timeout=60 * 60):
