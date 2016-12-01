@@ -1,17 +1,6 @@
-"""Working with azure effectively requires a few too many individual clients
-with rather specific APIs. This module is intended to give the most basic functionality
-to accomodate DC/OS testing
-"""
 import logging
 import re
 
-import azure.common.credentials
-from azure.mgmt.network import NetworkManagementClient
-from azure.mgmt.resource.resources import ResourceManagementClient
-from azure.mgmt.resource.resources.models import (DeploymentMode,
-                                                  DeploymentProperties,
-                                                  ResourceGroup, TemplateLink)
-from msrestazure.azure_exceptions import CloudError
 from retrying import retry
 
 from test_util.helpers import lazy_property
@@ -27,13 +16,42 @@ log = logging.getLogger(__name__)
 # deployment name from group names makes it easier to attach to creating deploys
 DEPLOYMENT_NAME = '{}-Deployment'
 
+class AzureClient(ApiClient):
+    """See:
+    https://docs.microsoft.com/en-us/rest/api/
+    """
 
-class AzureWrapper:
-    def __init__(self, subscription_id, tenant_id, client_id, client_secret):
-        self.credentials = azure.common.credentials.ServicePrincipalCredentials(
-            client_id=client_id,
-            secret=client_secret,
-            tenant=tenant_id)
+    def __init__(self, resource_url, client_id, client_secret, tenant_id, subscription_id):
+        super().__init__(default_host_url=resource_url, api_base=None)
+        self.resource_url = resource_url
+        assert resource_url.endswith('/'), 'Azure API resources must end with forward slash'
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.tenant_id = tenant_id
+        self.subscription_id = subscription_id
+        parse_result = urlparse(resource_url)
+        self.host = parse_result.netloc.split(':')[0]
+
+    def authenticate(self):
+        """See:
+        https://docs.microsoft.com/en-us/azure/active-directory/active-directory-protocols-oauth-service-to-service
+        https://docs.microsoft.com/en-us/azure/active-directory/active-directory-protocols-oauth-code
+        """
+        params = {
+            'grant_type': 'client_credentials',
+            'client_id': self.client_id,
+            'client_secret': self.client_secret,
+            'resource': self.resource_url}
+        r = self.post(
+            host_url='https://login.microsoftonline.com',
+            path='{}/oauth2/token'.format(self.tenant_id),
+            data=params)
+        r.raise_for_status()
+        self.access_token = r.json()['access_token']
+        self.default_headers = {
+            'Authorization': 'Bearer {}'.format(self.access_token),
+            'Host': self.host}
+
         self.rmc = ResourceManagementClient(self.credentials, subscription_id)
         self.nmc = NetworkManagementClient(self.credentials, subscription_id)
 
