@@ -156,16 +156,36 @@ class ApiClient:
             port=port))
 
         logging.info('Request method {}: {}'.format(method, request_url))
+
         return self.session.request(method, request_url, **kwargs)
 
-    get = functools.partialmethod(api_request, 'get')
-    post = functools.partialmethod(api_request, 'post')
-    put = functools.partialmethod(api_request, 'put')
-    delete = functools.partialmethod(api_request, 'delete')
-    options = functools.partialmethod(api_request, 'options')
-    head = functools.partialmethod(api_request, 'head')
-    patch = functools.partialmethod(api_request, 'patch')
-    delete = functools.partialmethod(api_request, 'delete')
+    @property
+    def get(self):
+        return functools.partial(self.api_request, 'get')
+
+    @property
+    def post(self):
+        return functools.partial(self.api_request, 'post')
+
+    @property
+    def put(self):
+        return functools.partial(self.api_request, 'put')
+
+    @property
+    def delete(self):
+        return functools.partial(self.api_request, 'delete')
+
+    @property
+    def patch(self):
+        return functools.partial(self.api_request, 'patch')
+
+    @property
+    def options(self):
+        return functools.partial(self.api_request, 'options')
+
+    @property
+    def head(self):
+        return functools.partial(self.api_request, 'head')
 
 
 def retry_boto_rate_limits(boto_fn, wait=2, timeout=60 * 60):

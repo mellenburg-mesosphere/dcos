@@ -3,7 +3,7 @@
 import pytest
 
 from test_util.cluster_api import ClusterApi, get_args_from_env
-from test_util.helpers import DcosUser
+from test_util.helpers import ApiClient, DcosUser, Url
 
 
 class MockResponse:
@@ -48,3 +48,21 @@ def test_make_user_session(monkeypatch, trivial_env):
     cluster_none = cluster_2.get_user_session(None)
     assert cluster_none.session.auth is None
     assert len(cluster_none.session.cookies.items()) == 0
+
+
+class MyTestClient(ApiClient):
+    def api_request(self, *args, **kwargs):
+        r = super().api_request(*args, **kwargs)
+        if r.status_code == 404:
+            # arg0 is method, arg1 is path_ex
+            new_args = list(args)
+            new_args[1] = ''
+            args = tuple(new_args)
+            r = super().api_request(*args, **kwargs)
+        return r
+
+
+def test_api_client_wrapping():
+    t = MyTestClient(Url.from_string('http://www.google.com'))
+    r = t.get('thispageprobablydoesntexisthatwouldbereallysupercrazyifitdid')
+    assert r.status_code == 200
