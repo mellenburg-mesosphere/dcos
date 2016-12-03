@@ -8,6 +8,7 @@ import os
 import tempfile
 import time
 from collections import namedtuple
+from urllib.parse import urlsplit, urlunsplit
 
 import requests
 import retrying
@@ -23,81 +24,139 @@ def path_join(p1, p2):
 
 class DcosUser:
     """A lightweight user representation."""
-    def __init__(self, auth_json):
+    def __init__(self, auth_json: dict):
         self.auth_json = auth_json
-        self.auth_header = {}
         self.auth_token = None
         self.auth_cookie = None
+        self.auth = None
 
     def authenticate(self, cluster):
         logging.info('Attempting authentication')
         # explicitly use a session with no user authentication for requesting auth headers
-        if cluster.web_auth_default_user:
-            post = cluster.get_user_session(None).post
-        else:
-            post = cluster.post
-        r = post('/acs/api/v1/auth/login', json=self.auth_json)
+        r = cluster.post('/acs/api/v1/auth/login', json=self.auth_json, auth=None)
         r.raise_for_status()
         logging.info('Received authorization blob: {}'.format(r.json()))
         self.auth_token = r.json()['token']
-        self.auth_header = {'Authorization': 'token={}'.format(self.auth_token)}
         self.auth_cookie = r.cookies['dcos-acs-auth-cookie']
         logging.info('Authentication successful')
+        # Set requests auth
+        self.auth = DcosAuth('token={}'.format(self.auth_token))
+
+
+class DcosAuth(requests.auth.AuthBase):
+    def __init__(self, auth_str):
+        self.auth_str = auth_str
+
+    def __call__(self, r):
+        r.headers['Authorization'] = self.auth_str
+        return r
+
+
+class Url:
+    """URL abstraction to allow convenient substitution of URL anatomy
+    """
+    def __init__(self, scheme, host, path, query, fragment, port):
+        self.scheme = scheme
+        self.host = host
+        self.path = path
+        self.query = query
+        self.fragment = fragment
+        self.port = port
+
+    @classmethod
+    def from_string(cls, url_str):
+        u = urlsplit(url_str)
+        if ':' in u.netloc:
+            s = u.netloc.split(':')
+            host = s[0]
+            port = s[1]
+        else:
+            host = u.netloc
+            port = None
+        return cls(u.scheme, host, u.path, u.query, u.fragment, port)
+
+    @property
+    def netloc(self):
+        return '{}:{}'.format(self.host, self.port) if self.port else self.host
+
+    def __str__(self):
+        return urlunsplit((
+            self.scheme,
+            self.netloc,
+            self.path,
+            self.query if self.query else '',
+            self.fragment if self.fragment else ''))
+
+    def get_url(self, scheme=None, host=None, path=None, query=None, fragment=None, port=None):
+        """return new Url with any component replaced
+        """
+        return Url(
+            scheme if scheme is not None else self.scheme,
+            host if host is not None else self.host,
+            path if path is not None else self.path,
+            query if query is not None else self.query,
+            fragment if fragment is not None else self.fragment,
+            port if port is not None else self.port)
 
 
 class ApiClient:
-
-    def __init__(self, default_host_url, api_base, default_headers=None,
-                 ca_cert_path=None, get_node_url=None):
-        self.default_host_url = default_host_url
-        self.api_base = api_base
-        if default_headers is None:
-            default_headers = dict()
-        self.default_headers = default_headers
-        self.ca_cert_path = ca_cert_path
-        self._get_node_url = get_node_url
-
-    def api_request(self, method, path, host_url=None, node=None, port=None, **kwargs):
+    """utilizes requests.session with some URL handling to remove boilerplate for making
+    cluster requests. Can also be used to bind advanced helper methods of a given service
+    """
+    def __init__(self, url: Url, get_node_port=None):
         """
-        Makes a request with default headers + user auth headers if necessary
-        If self.ca_cert_path is set, this method will pass it to requests
         Args:
-            method: (str) name of method for requests.request
-            path: see get_url()
-            host_url: override the client's default host URL
-            node: if a get_node_url function is set, node and port will be passed to this function
-                instead of setting a host_url or using the default
-            port: can be used with node with get_node_url is set
-            **kwargs: any optional arguments to be passed to requests.request
+            url: Url object to which requests will be made
+        Keyword Args:
+            get_node_port: a callback that takes a node string as an argument. This function
+                must return the port for that string. Intended for communicating with an API
+                that uses different ports on different hosts (e.g. AdminRouter, Mesos )
         """
-        headers = copy.copy(self.default_headers)
+        self.url = url
+        self.session = requests.Session()
+        self._get_node_port = get_node_port
 
-        # allow kwarg to override verification so client can be used generically
-        if self.ca_cert_path and 'verify' not in kwargs:
-            kwargs['verify'] = self.ca_cert_path
+    def get_client(self, scheme=None, host=None, path=None, query=None, fragment=None, port=None):
+        """Takes the same arguments as Url.get_url
+        """
+        clone = copy.deepcopy(self)
+        clone.url = self.url.get_url(scheme=scheme, host=host, path=path, query=query, fragment=fragment, port=port)
+        return clone
 
-        if self.api_base:
-            path = path_join(self.api_base, path)
+    def api_request(self, method, path_ex, scheme=None, host=None, query=None,
+                    fragment=None, path=None, port=None, node=None, **kwargs):
+        """ Direct wrapper for session.request. Returns request.Response
+        Args:
+            method: the HTTP request method to be used
+            path_ex: the extension to the path that is set as the default Url
 
+        Keyword Args:
+            All the named keyword args except node are identical to Url.get_url
+            node: can only be used if a get_node_port is set.
+            **kwargs: anything that can be passed to requests.request
+        """
         if node is not None:
-            assert host_url is None, 'Cannot set both node ({}) and host_url ({})'.format(node, host_url)
-            assert self._get_node_url is not None, 'get_node_url function must be supplied'
-            host_url = self._get_node_url(node, port=port)
-        else:
-            host_url = host_url if host_url else self.default_host_url
-        request_url = path_join(host_url, path)
-        headers.update(kwargs.pop('headers', {}))
-        logging.info('Request method {}: {}'.format(method, request_url))
-        logging.debug('Reqeust kwargs: {}'.format(kwargs))
-        logging.debug('Request headers: {}'.format(headers))
-        return requests.request(method, request_url, headers=headers, **kwargs)
+            assert port is None, 'node is intended to retrieve port; cannot set both simultaneously'
+            assert host is None, 'node is intended to retrieve host; cannot set both simultaneously'
+            assert self._get_node_port is not None, 'get_node_netloc must be specified for this ApiClient!'
+            port = self._get_node_port(node)
+            # do not explicitly declare default ports
+            host = node
+            if (port == 80 and self.url.scheme == 'http') or (port == 443 and self.url.scheme == 'https'):
+                port = None
 
-    def get_client(self, path, default_headers=None):
-        new_client = copy.deepcopy(self)
-        if default_headers is not None:
-            new_client.default_headers.update(default_headers)
-        new_client.api_base = path_join(self.api_base, path) if self.api_base is not None else path
-        return new_client
+        final_path = path_join(path if path else self.url.path, path_ex)
+
+        request_url = str(self.url.get_url(
+            scheme=scheme,
+            host=host,
+            path=final_path,
+            query=query,
+            fragment=fragment,
+            port=port))
+
+        logging.info('Request method {}: {}'.format(method, request_url))
+        return self.session.request(method, request_url, **kwargs)
 
     get = functools.partialmethod(api_request, 'get')
     post = functools.partialmethod(api_request, 'post')
@@ -189,3 +248,15 @@ def session_tempfile(data):
     # Attempt to remove the file upon normal interpreter exit.
     atexit.register(remove_file)
     return temp_path
+
+
+def lazy_property(property_fn):
+    cache_name = '{}_cached'.format(property_fn.__name__)
+
+    @property
+    @functools.wraps(property_fn)
+    def _lazy_prop(self):
+        if not hasattr(self, cache_name):
+            setattr(self, cache_name, property_fn(self))
+        return getattr(self, cache_name)
+    return _lazy_prop

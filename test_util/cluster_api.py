@@ -1,15 +1,13 @@
-import copy
 import logging
 import os
-from urllib.parse import urlparse
 
 import dns.exception
 import dns.resolver
 import requests
 import retrying
 
-import test_util.helpers
 import test_util.marathon
+from test_util.helpers import ApiClient, lazy_property, Url
 
 ADMINROUTER_PORT_MAPPING = {
     'master': {'http': 80, 'https': 443},
@@ -41,12 +39,10 @@ def get_args_from_env():
         'public_slaves': os.environ['PUBLIC_SLAVE_HOSTS'].split(','),
         'dns_search_set': os.environ['DNS_SEARCH'] == 'true',
         'provider': os.environ['DCOS_PROVIDER'],
-        'auth_enabled': os.getenv('DCOS_AUTH_ENABLED', 'true') == 'true',
-        'default_os_user': os.getenv('DCOS_DEFAULT_OS_USER', 'root'),
-        'ca_cert_path': os.getenv('DCOS_CA_CERT_PATH', None)}
+        'default_os_user': os.getenv('DCOS_DEFAULT_OS_USER', 'root')}
 
 
-class ClusterApi(test_util.helpers.ApiClient):
+class ClusterApi(ApiClient):
 
     @retrying.retry(wait_fixed=1000,
                     retry_on_result=lambda ret: ret is False,
@@ -209,7 +205,7 @@ class ClusterApi(test_util.helpers.ApiClient):
     def wait_for_dcos(self):
         self._wait_for_leader_election()
         self._wait_for_adminrouter_up()
-        if self.auth_enabled and self.web_auth_default_user:
+        if self.web_auth_default_user:
             self._authenticate_default_user()
         self._wait_for_marathon_up()
         self._wait_for_zk_quorum()
@@ -227,11 +223,10 @@ class ClusterApi(test_util.helpers.ApiClient):
         will raise exception if authorization fails
         """
         self.web_auth_default_user.authenticate(self)
-        self.default_headers.update(self.web_auth_default_user.auth_header)
+        self.session.auth = self.web_auth_default_user.auth
 
     def __init__(self, dcos_url, masters, public_masters, slaves, public_slaves,
-                 dns_search_set, provider, auth_enabled, default_os_user,
-                 web_auth_default_user=None, ca_cert_path=None):
+                 dns_search_set, provider, default_os_user, web_auth_default_user=None):
         """Proxy class for DC/OS clusters.
 
         Args:
@@ -243,26 +238,13 @@ class ClusterApi(test_util.helpers.ApiClient):
             dns_search_set: string indicating that a DNS search domain is
                 configured if its value is "true".
             provider: onprem, azure, or aws
-            auth_enabled: True or False
             default_os_user: default user that marathon/metronome will launch tasks under
-            web_auth_default_user: if auth_enabled, use this user's auth for all requests
+            web_auth_default_user: use this user's auth for all requests
                 Note: user must be authenticated explicitly or call self.wait_for_dcos()
-            ca_cert_path: (str) optional path point to the CA cert to make requests against
         """
-        # URL must include scheme
-        assert dcos_url.startswith('http')
-        parse_result = urlparse(dcos_url)
-        self.scheme = parse_result.scheme
-        self.dns_host = parse_result.netloc.split(':')[0]
-
-        # Make URL never end with /
-        self.dcos_url = dcos_url.rstrip('/')
-
         super().__init__(
-            default_host_url=self.dcos_url,
-            api_base=None,
-            ca_cert_path=ca_cert_path,
-            get_node_url=self.get_node_url)
+            url=Url.from_string(dcos_url),
+            get_node_port=self.get_node_port)
         self.masters = sorted(masters)
         self.public_masters = sorted(public_masters)
         self.slaves = sorted(slaves)
@@ -271,36 +253,25 @@ class ClusterApi(test_util.helpers.ApiClient):
         self.zk_hostports = ','.join(':'.join([host, '2181']) for host in self.public_masters)
         self.dns_search_set = dns_search_set
         self.provider = provider
-        self.auth_enabled = auth_enabled
         self.default_os_user = default_os_user
         self.web_auth_default_user = web_auth_default_user
 
         assert len(self.masters) == len(self.public_masters)
 
     def get_user_session(self, user):
-        """Returns a copy of self with auth headers set for user
+        """Returns a copy of this client but with auth for user (can be None)
         """
-        new_session = copy.deepcopy(self)
-        # purge old auth headers
-        if self.web_auth_default_user is not None:
-            for k in self.web_auth_default_user.auth_header.keys():
-                if k in new_session.default_headers:
-                    del new_session.default_headers[k]
-        # if user is given then auth and update the headers
-        new_session.web_auth_default_user = user
+        new = self.get_client()
+        new.session.auth = None
+        new.session.cookies.clear()
         if user is not None:
-            new_session._authenticate_default_user()
-        return new_session
+            user.authenticate(new)
+            new.session.auth = user.auth
+        new.web_auth_default_user = None
+        return new
 
-    def get_node_url(self, node, port=None):
-        """
-        Args:
-            node: (str) the hostname of the node to be requested from, if node=None,
-                then public cluster address (see environment DCOS_DNS_ADDRESS)
-            port: (int) port to be requested at. If port=None, the default port
-                for that given node type will be used
-        Returns:
-            fully-qualified URL string for this API
+    def get_node_port(self, node):
+        """Returns the port for a given node that can be found in self.master or self.all_slaves
         """
         if node in self.masters:
             role = 'master'
@@ -308,32 +279,29 @@ class ClusterApi(test_util.helpers.ApiClient):
             role = 'agent'
         else:
             raise Exception('Node {} is not recognized within the DC/OS cluster'.format(node))
-        if port is None:
-            port = ADMINROUTER_PORT_MAPPING[role][self.scheme]
-        # do not explicitly declare default ports
-        if (port == 80 and self.scheme == 'http') or (port == 443 and self.scheme == 'https'):
-            netloc = node
-        else:
-            netloc = '{}:{}'.format(node, port)
-        return '{}://{}'.format(self.scheme, netloc)
+        return ADMINROUTER_PORT_MAPPING[role][self.url.scheme]
 
-    @property
+    @lazy_property
     def marathon(self):
         marathon_client = test_util.marathon.Marathon(
-            default_host_url=self.dcos_url,
-            default_os_user=self.default_os_user,
-            default_headers=self.default_headers,
-            ca_cert_path=self.ca_cert_path,
-            get_node_url=self.get_node_url)
+            url=self.url.get_url(path='marathon'),
+            default_os_user=self.default_os_user)
+        if self.web_auth_default_user:
+            marathon_client.session.auth = self.session.auth
+            marathon_client.session.cookies = self.session.cookies
         return marathon_client
 
-    @property
+    @lazy_property
     def metronome(self):
-        return self.get_client('/service/metronome/v1')
+        return self.get_client(path='service/metronome/v1')
 
-    @property
+    @lazy_property
+    def health(self):
+        return self.get_client(query='cache=0', path='system/health/v1')
+
+    @lazy_property
     def logs(self):
-        return self.get_client('/system/v1/logs')
+        return self.get_client(path='system/v1/logs')
 
     def metronome_one_off(self, job_definition, timeout=300, ignore_failures=False):
         """Run a job on metronome and block until it returns success

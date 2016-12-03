@@ -9,7 +9,6 @@ import retrying
 
 from test_util.helpers import ApiClient, path_join
 
-DEFAULT_API_BASE = 'marathon'
 TEST_APP_NAME_FMT = 'integration-test-{}'
 REQUIRED_HEADERS = {'Accept': 'application/json, text/plain, */*'}
 
@@ -81,17 +80,12 @@ def get_test_app_in_docker(ip_per_container):
 
 
 class Marathon(ApiClient):
-    def __init__(self, default_host_url, default_os_user='root', api_base=DEFAULT_API_BASE,
-                 get_node_url=None, default_headers=None, ca_cert_path=None):
-        if default_headers is None:
-            default_headers = dict()
-        default_headers.update(REQUIRED_HEADERS)
+    def __init__(self, url, default_os_user='root'):
         super().__init__(
-            default_host_url=default_host_url,
-            api_base=api_base,
-            default_headers=default_headers,
-            get_node_url=get_node_url,
-            ca_cert_path=ca_cert_path)
+            url=url,
+            # marathon has no agent service point
+            get_node_port=None)
+        self.session.headers.update(REQUIRED_HEADERS)
         self.default_os_user = default_os_user
 
     def deploy_test_app_and_check(self, app, test_uuid):
