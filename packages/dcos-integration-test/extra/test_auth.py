@@ -3,14 +3,9 @@ import pytest
 
 @pytest.fixture(scope='module')
 def auth_cluster(cluster):
-    if not cluster.auth_enabled:
+    if cluster.session.auth is None:
         pytest.skip("Skipped because not running against cluster with auth.")
     return cluster
-
-
-@pytest.fixture(scope='module')
-def noauth_cluster(auth_cluster):
-    return auth_cluster.get_user_session(None)
 
 
 def test_adminrouter_access_control_enforcement(auth_cluster, noauth_cluster):
