@@ -4,6 +4,7 @@ import time
 
 import boto3
 import retrying
+from requests.auth import AuthBase
 
 from test_util.helpers import Host, retry_boto_rate_limits, SshInfo
 
