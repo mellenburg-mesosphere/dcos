@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-import sys, os, base64, datetime, hashlib, hmac
+import datetime
 import logging
+import hashlib
+import hmac
 import time
 
 import boto3
 import retrying
+import xmltodict
 from requests.auth import AuthBase
 
-from test_util.helpers import Host, retry_boto_rate_limits, SshInfo
+from test_util.helpers import ApiClient, Host, retry_boto_rate_limits, SshInfo, Url
 
 LOGGING_FORMAT = '[%(asctime)s|%(name)s|%(levelname)s]: %(message)s'
 logging.basicConfig(format=LOGGING_FORMAT, level=logging.DEBUG)
@@ -31,79 +34,121 @@ def instances_to_hosts(instances):
     return [Host(i.private_ip_address, i.public_ip_address) for i in instances]
 
 
+def sign(key, msg):
+    return hmac.new(key, msg.encode('utf-8'), hashlib.sha256).digest()
+
+
+def getSignatureKey(key, dateStamp, regionName, serviceName):
+    kDate = sign(('AWS4' + key).encode('utf-8'), dateStamp)
+    kRegion = sign(kDate, regionName)
+    kService = sign(kRegion, serviceName)
+    kSigning = sign(kService, 'aws4_request')
+    return kSigning
+
+
 class AwsAuth(AuthBase):
     """http://docs.aws.amazon.com/general/latest/gr/sigv4-signed-request-examples.html
     """
-    def __init__(self, region, access_key_id, secret_access_key):
-        self.region = region
+    def __init__(self, access_key_id, secret_access_key):
         self.access_key_id = access_key_id
         self.secret_access_key = secret_access_key
 
     def __call__(self, r):
-        signature = None
-        r.headers['Authorization'] = 'AWS {}'.format(
-            self.access_key_id, signature)
-
-        method = 'GET'
-        service = 'ec2'
-        host = 'ec2.amazonaws.com'
-        region = 'us-east-1'
-        endpoint = 'https://ec2.amazonaws.com'
-        request_parameters = 'Action=DescribeRegions&Version=2013-10-15'
-
+        # use our Url to hand the requests url
+        url = Url.from_string(r.url)
+        # service, region = url.host.split('.')[:2]
+        service, region = service_region_from_endpoint(url.host)
+        # STEP 1: Canonical Request: http://docs.aws.amazon.com/general/latest/gr/sigv4-create-canonical-request.html
+        # sorted_query = urllib.parse.quote('&'.join(sorted(url.query.split('&'))))
+        sorted_query = '&'.join(sorted(url.query.split('&')))
+        r.url = str(url.get_url(query=sorted_query))  # query parameters must be sorted
         t = datetime.datetime.utcnow()
         amzdate = t.strftime('%Y%m%dT%H%M%SZ')
-        datestamp = t.strftime('%Y%m%d') # Date w/o time, used in credential scope
-
-        # STEP 1: Canonical Request: http://docs.aws.amazon.com/general/latest/gr/sigv4-create-canonical-request.html
-        c_uri = r.url.path  # must begin with '/'
-        c_qs = r.url.query  # must be sorted by key and urlencoded
-        c_headers = ''
+        r.headers.update({'x-amz-date': amzdate, 'host': url.host})
+        header_str = ''
         # r.headers must have 'host' and 'x-amz-date'
-        for k, v in sort(r.headers.items()):
-            c_headers += k.lower().strip()
-            c_headers += v.lower().strip()
-            c_headers += '\n'
+        # for k, v in sorted(r.headers.items()):
+        for k in ['host', 'x-amz-date']:
+            header_str += '{}:{}\n'.format(k, r.headers[k].strip())
 
-        signed_headers = ';'.join(sort(list(r.headers.keys())))
+        # signed_headers = ';'.join(sorted([h.lower() for h in r.headers.keys()]))
+        signed_headers = 'host;x-amz-date'
 
-        # hash of body of requset (no body in GET)
-        payload_hash = hashlib.sha256(r.body).hexdigest()
-
-        canonical_request = r.method + '\n' + canonical_uri + '\n' + canonical_querystring + '\n' + canonical_headers + '\n' + signed_headers + '\n' + payload_hash
+        payload = r.body if r.body is not None else ''
+        canonical_request = '\n'.join([
+            r.method.upper(),
+            url.path,
+            sorted_query,
+            header_str,
+            signed_headers,
+            hashlib.sha256(payload.encode()).hexdigest()])
 
         # STEP 2 create the string to sign
         algorithm = 'AWS4-HMAC-SHA256'
-        credential_scope = datestamp + '/' + region + '/' + service + '/' + 'aws4_request'
-        string_to_sign = algorithm + '\n' +  amzdate + '\n' +  credential_scope + '\n' +  hashlib.sha256(canonical_request).hexdigest()
+        datestamp = t.strftime('%Y%m%d')
+        credential_scope = '/'.join([datestamp, region, service, 'aws4_request'])
+        string_to_sign = '\n'.join([
+            algorithm,
+            amzdate,
+            credential_scope,
+            hashlib.sha256(canonical_request.encode()).hexdigest()])
 
         # STEP 3 Calculate the signature
-        signing_key = getSignatureKey(secret_key, datestamp, region, service)
+        signing_key = getSignatureKey(self.secret_access_key, datestamp, region, service)
         signature = hmac.new(signing_key, (string_to_sign).encode('utf-8'), hashlib.sha256).hexdigest()
 
         # STEP 4 ADD SIGNING INFO TO REQUEST
-        authorization_header = algorithm + ' ' + 'Credential=' + access_key + '/' + credential_scope + ', ' +  'SignedHeaders=' + signed_headers + ', ' + 'Signature=' + signature
+        r.headers.update({
+            'Authorization': '{} Credential={}/{},SignedHeaders={},Signature={}'.format(
+                algorithm, self.access_key_id, credential_scope, signed_headers, signature)})
+        return r
 
-        # Python note: The 'host' header is added automatically by the Python 'requests' library.
-        r.headers = {'x-amz-date':amzdate, 'Authorization':authorization_header}
 
-        # DONE
-        request_url = endpoint + '?' + canonical_querystring
-        r = requests.get(request_url, headers=headers)
+def endpoint_from_service_region(service, region):
+    if service == 's3':
+        return 's3-{}.amazonaws.com'.format(region)
+    elif service == 'es':
+        return '{}.es.amazonaws.com'.format(region)
+    else:
+        return '{}.region.amazonaws.com'.format(service, region)
 
-        # http://docs.aws.amazon.com/general/latest/gr/sigv4-signed-request-examples.html
 
-        # Key derivation functions. See:
-        # http://docs.aws.amazon.com/general/latest/gr/signature-v4-examples.html#signature-v4-examples-python
-        def sign(key, msg):
-            return hmac.new(key, msg.encode('utf-8'), hashlib.sha256).digest()
+def service_region_from_endpoint(endpoint):
+    """endpoint must be a host string (i.e. not scheme or path)
+    """
+    if endpoint.startswith('s3'):
+        return 's3', endpoint.split('.')[0][3:]
+    else:
+        service, region = endpoint.split('.')[:2]
+        if region == 'es':
+            return region, service
+        else:
+            return service, region
 
-        def getSignatureKey(key, dateStamp, regionName, serviceName):
-            kDate = sign(('AWS4' + key).encode('utf-8'), dateStamp)
-            kRegion = sign(kDate, regionName)
-            kService = sign(kRegion, serviceName)
-            kSigning = sign(kService, 'aws4_request')
-            return kSigning
+
+class AwsApiClient(ApiClient):
+    def __init__(self, access_key_id, secret_access_key):
+        """ElasticSearch and S3 doesnt use region convention
+        """
+        super().__init__(Url.from_string('https://amazonaws.com'))
+        self.session.auth = AwsAuth(access_key_id, secret_access_key)
+        self.version = None
+
+    def get_service(self, service, region, version):
+        service_client = super().get_client(host=endpoint_from_service_region(service, region))
+        service_client.version = version
+        return service_client
+
+    def api_request(self, *args, **kwargs):
+        sleep = 2
+        resp = super().api_request(*args, **kwargs)
+        while resp.status_code == 503:
+            time.sleep(sleep)
+            resp = super().api_request(*args, **kwargs)
+            sleep *= 2
+        if resp.content:
+            resp.xml_dict = xmltodict.parse(resp.content.decode())
+        return resp
 
 
 class BotoWrapper():
