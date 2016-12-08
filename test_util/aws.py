@@ -4,10 +4,11 @@ import logging
 import hashlib
 import hmac
 import time
+from io import StringIO
+from xml.etree import ElementTree
 
 import boto3
 import retrying
-import xmltodict
 from requests.auth import AuthBase
 
 from test_util.helpers import ApiClient, Host, retry_boto_rate_limits, SshInfo, Url
@@ -46,6 +47,16 @@ def getSignatureKey(key, dateStamp, regionName, serviceName):
     return kSigning
 
 
+def etree_without_namespace(xml_str):
+    """Homegenous XML namespace in AWS responses serve little to no purpose
+    """
+    it = ElementTree.iterparse(StringIO(xml_str))
+    for _, elem in it:
+        if elem.tag[0] == '{':
+            elem.tag = elem.tag[elem.tag.find('}') + 1:]
+    return it.root
+
+
 class AwsAuth(AuthBase):
     """http://docs.aws.amazon.com/general/latest/gr/sigv4-signed-request-examples.html
     """
@@ -56,7 +67,6 @@ class AwsAuth(AuthBase):
     def __call__(self, r):
         # use our Url to hand the requests url
         url = Url.from_string(r.url)
-        # service, region = url.host.split('.')[:2]
         service, region = service_region_from_endpoint(url.host)
         # STEP 1: Canonical Request: http://docs.aws.amazon.com/general/latest/gr/sigv4-create-canonical-request.html
         # sorted_query = urllib.parse.quote('&'.join(sorted(url.query.split('&'))))
@@ -64,15 +74,21 @@ class AwsAuth(AuthBase):
         r.url = str(url.get_url(query=sorted_query))  # query parameters must be sorted
         t = datetime.datetime.utcnow()
         amzdate = t.strftime('%Y%m%dT%H%M%SZ')
+        # these headers must be in the signed headers
         r.headers.update({'x-amz-date': amzdate, 'host': url.host})
         header_str = ''
-        # r.headers must have 'host' and 'x-amz-date'
-        # for k, v in sorted(r.headers.items()):
-        for k in ['host', 'x-amz-date']:
-            header_str += '{}:{}\n'.format(k, r.headers[k].strip())
+        new_headers = {}
+        # first, reformat headers
+        for k, v in r.headers.items():
+            key = k.lower().strip()
+            val = r.headers[k].strip()
+            new_headers[key] = val
+        r.headers = new_headers
+        # now, create canonical header string
+        for k, v in sorted(r.headers.items()):
+            header_str += '{}:{}\n'.format(k, v)
 
-        # signed_headers = ';'.join(sorted([h.lower() for h in r.headers.keys()]))
-        signed_headers = 'host;x-amz-date'
+        signed_headers = ';'.join(sorted([h for h in r.headers.keys()]))
 
         payload = r.body if r.body is not None else ''
         canonical_request = '\n'.join([
@@ -156,7 +172,7 @@ class AwsApiClient(ApiClient):
             resp = super().api_request(*args, **kwargs)
             sleep *= 2
         if resp.content:
-            resp.xml_dict = xmltodict.parse(resp.content.decode())
+            resp.xml = etree_without_namespace(resp.content.decode())
         return resp
 
 
