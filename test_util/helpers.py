@@ -123,18 +123,8 @@ class ApiClient:
         clone.url = self.url.get_url(scheme=scheme, host=host, path=path, query=query, fragment=fragment, port=port)
         return clone
 
-    def api_request(self, method, path_ex, scheme=None, host=None, query=None,
-                    fragment=None, path=None, port=None, node=None, **kwargs):
-        """ Direct wrapper for session.request. Returns request.Response
-        Args:
-            method: the HTTP request method to be used
-            path_ex: the extension to the path that is set as the default Url
-
-        Keyword Args:
-            All the named keyword args except node are identical to Url.get_url
-            node: can only be used if a get_node_port is set.
-            **kwargs: anything that can be passed to requests.request
-        """
+    def get_url(self, path_ex, scheme=None, host=None, query=None,
+                fragment=None, path=None, port=None, node=None):
         if node is not None:
             assert port is None, 'node is intended to retrieve port; cannot set both simultaneously'
             assert host is None, 'node is intended to retrieve host; cannot set both simultaneously'
@@ -147,14 +137,28 @@ class ApiClient:
 
         final_path = path_join(path if path else self.url.path, path_ex)
 
-        request_url = str(self.url.get_url(
+        return self.url.get_url(
             scheme=scheme,
             host=host,
             path=final_path,
             query=query,
             fragment=fragment,
-            port=port))
+            port=port)
 
+    def api_request(self, method, path_ex, scheme=None, host=None, query=None,
+                    fragment=None, path=None, port=None, node=None, **kwargs):
+        """ Direct wrapper for session.request. Returns request.Response
+        Args:
+            method: the HTTP request method to be used
+            path_ex: the extension to the path that is set as the default Url
+
+        Keyword Args:
+            All the named keyword args except node are identical to Url.get_url
+            node: can only be used if a get_node_port is set.
+            **kwargs: anything that can be passed to requests.request
+        """
+        request_url = str(self.get_url(path_ex, scheme=scheme, host=host, query=query,
+                          fragment=fragment, path=path, port=port, node=node))
         logging.info('Request method {}: {}'.format(method, request_url))
 
         return self.session.request(method, request_url, **kwargs)

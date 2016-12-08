@@ -110,7 +110,7 @@ def endpoint_from_service_region(service, region):
     elif service == 'es':
         return '{}.es.amazonaws.com'.format(region)
     else:
-        return '{}.region.amazonaws.com'.format(service, region)
+        return '{}.{}.amazonaws.com'.format(service, region)
 
 
 def service_region_from_endpoint(endpoint):
@@ -136,8 +136,17 @@ class AwsApiClient(ApiClient):
 
     def get_service(self, service, region, version):
         service_client = super().get_client(host=endpoint_from_service_region(service, region))
-        service_client.version = version
+        service_client.default_version = version
         return service_client
+
+    def get_url(self, path_ex, scheme=None, host=None, query=None,
+                fragment=None, path=None, port=None, node=None):
+        if query is None:
+            query = ''
+        if 'Version' not in query:
+            query = query + '&Version={}'.format(self.default_version)
+        return super().get_url(path_ex, scheme=scheme, host=host, query=query,
+                               fragment=fragment, path=path, port=port, node=node)
 
     def api_request(self, *args, **kwargs):
         sleep = 2
