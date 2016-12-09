@@ -142,16 +142,21 @@ def service_region_from_endpoint(endpoint):
             return service, region
 
 
+def stringify_element(elem):
+    return ElementTree.tostring(elem).decode()
+
+
 class AwsApiClient(ApiClient):
-    def __init__(self, access_key_id, secret_access_key):
+    def __init__(self, region, access_key_id, secret_access_key):
         """ElasticSearch and S3 doesnt use region convention
         """
         super().__init__(Url.from_string('https://amazonaws.com'))
+        self.region = region
         self.session.auth = AwsAuth(access_key_id, secret_access_key)
         self.version = None
 
-    def get_service(self, service, region, version):
-        service_client = super().get_client(host=endpoint_from_service_region(service, region))
+    def get_service(self, service, version):
+        service_client = super().get_client(host=endpoint_from_service_region(service, self.region))
         service_client.default_version = version
         return service_client
 
@@ -174,6 +179,18 @@ class AwsApiClient(ApiClient):
         if resp.content:
             resp.xml = etree_without_namespace(resp.content.decode())
         return resp
+
+    @property
+    def cloudformation(self):
+        return self.get_service('cloudformation', '2010-05-15')
+
+    @property
+    def ec2(self):
+        return self.get_service('ec2', '2016-11-15')
+
+    @property
+    def autoscaling(self):
+        return self.get_service('autoscaling', ' 2011-01-01')
 
 
 class BotoWrapper():
@@ -215,9 +232,9 @@ class BotoWrapper():
 
 
 class CfStack():
-    def __init__(self, stack_name, boto_wrapper):
-        self.boto_wrapper = boto_wrapper
-        self.stack = self.boto_wrapper.resource('cloudformation').Stack(stack_name)
+    def __init__(self, stack_name, aws_client):
+        self.aws_client = aws_client
+        self.stack_name = stack_name
         self._host_cache = {}
 
     def wait_for_status_change(self, state_1, state_2, wait_before_poll_min, timeout=60 * 60):
@@ -246,28 +263,34 @@ class CfStack():
                         retry_on_exception=lambda ex: False)
         def wait_loop():
             stack_details = self.get_stack_details()
-            stack_status = stack_details['StackStatus']
+            stack_status = stack_details.find('StackStatus').text
             if stack_status == state_2:
                 return True
             if stack_status != state_1:
-                log.error('Stack Details: {}'.format(stack_details))
-                for event in self.get_stack_events():
-                    log.error('Stack Events: {}'.format(event))
+                log.error('Stack Details: {}'.format(stringify_element(stack_details)))
+                log.error('Stack Events: {}'.format(
+                    '\n'.join(['{}: {}'.format(c.tag, c.text) for e in self.get_stack_events() for c in list(e)])))
                 raise Exception('StackStatus changed unexpectedly to: {}'.format(stack_status))
             return False
         wait_loop()
 
-    @retry_boto_rate_limits
     def get_stack_details(self):
+        """returns an XML element for the local stack
+        """
         log.debug('Requesting stack details')
-        return self.boto_wrapper.client('cloudformation').describe_stacks(
-            StackName=self.stack.stack_id)['Stacks'][0]
+        r = self.aws_client.cloudformation.get(
+            '', query='Action=DescribeStacks&StackName={}'.format(self.stack_name))
+        r.raise_for_status()
+        return r.xml.find('DescribeStacksResult').find('Stacks').find('member')
 
-    @retry_boto_rate_limits
     def get_stack_events(self):
+        """returns a list of event elements
+        """
         log.debug('Requesting stack events')
-        return self.boto_wrapper.client('cloudformation').describe_stack_events(
-            StackName=self.stack.stack_id)['StackEvents']
+        r = self.aws_client.cloudformation.get(
+            '', query='Action=DescribeStackEvents&StackName={}'.format(self.stack_name))
+        r.raise_for_status()
+        return r.xml.find('DescribeStackEventsResult').find('StackEvents').findall('member')
 
     def wait_for_stack_creation(self, wait_before_poll_min=3):
         self.wait_for_status_change('CREATE_IN_PROGRESS', 'CREATE_COMPLETE', wait_before_poll_min)
@@ -276,21 +299,10 @@ class CfStack():
         self.wait_for_status_change('DELETE_IN_PROGRESS', 'DELETE_COMPLETE', wait_before_poll_min)
 
     def get_parameter(self, param):
-        """Returns param if in stack parameters, else returns None
-        """
-        for p in self.stack.parameters:
-            if p['ParameterKey'] == param:
-                return p['ParameterValue']
-        raise KeyError('Key not found in template parameters: {}. Parameters: {}'.
-                       format(param, self.stack.parameters))
+        raise NotImplementedError()
 
-    @retry_boto_rate_limits
     def get_auto_scaling_instances(self, logical_id):
-        """ Get instances in ASG with logical_id. If logical_id is None, all ASGs will be used
-        Will return instance objects as describd here:
-        http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#instance
-
-        Note: there is no ASG resource hence the need for this method
+        """ get stack resources, then describe autoscaling groups and grab instance set
         """
         ec2 = self.boto_wrapper.resource('ec2')
         return [ec2.Instance(i['InstanceId']) for asg in self.boto_wrapper.client('autoscaling').
