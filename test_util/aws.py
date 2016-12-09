@@ -146,6 +146,19 @@ def stringify_element(elem):
     return ElementTree.tostring(elem).decode()
 
 
+class AwsApiError(Exception):
+    def __init__(self, code, message):
+        self.code = code
+        self.message = message
+
+    def __repr__(self):
+        return '{}: {}'.format(self.code, self.message)
+
+    @classmethod
+    def from_element(cls, elem):
+        return cls(elem.find('Code').text, elem.find('Message').text)
+
+
 class AwsApiClient(ApiClient):
     def __init__(self, region, access_key_id, secret_access_key):
         """ElasticSearch and S3 doesnt use region convention
@@ -154,10 +167,12 @@ class AwsApiClient(ApiClient):
         self.region = region
         self.session.auth = AwsAuth(access_key_id, secret_access_key)
         self.version = None
+        self.service = None
 
     def get_service(self, service, version):
         service_client = super().get_client(host=endpoint_from_service_region(service, self.region))
-        service_client.default_version = version
+        service_client.version = version
+        service_client.service = service
         return service_client
 
     def get_url(self, path_ex, scheme=None, host=None, query=None,
@@ -165,20 +180,55 @@ class AwsApiClient(ApiClient):
         if query is None:
             query = ''
         if 'Version' not in query:
-            query = query + '&Version={}'.format(self.default_version)
+            query = query + '&Version={}'.format(self.version)
         return super().get_url(path_ex, scheme=scheme, host=host, query=query,
                                fragment=fragment, path=path, port=port, node=node)
 
     def api_request(self, *args, **kwargs):
         sleep = 2
         resp = super().api_request(*args, **kwargs)
-        while resp.status_code == 503:
+        while self._should_retry(resp):
             time.sleep(sleep)
             resp = super().api_request(*args, **kwargs)
             sleep *= 2
         if resp.content:
             resp.xml = etree_without_namespace(resp.content.decode())
+        if not resp.ok:
+            logging.error('AWS Client recieved status {} from {}'.format(resp.status_code, resp.url))
+            if resp.xml:
+                raise self._extract_error(resp.xml)
+            else:
+                resp.raise_for_status()
         return resp
+
+    def _should_retry(self, resp):
+        if resp.ok:
+            return False  # successful; nothing to retry
+        if resp.status_code == 503:
+            return True  # represents temporarily unavailable across all services
+        if not resp.content:
+            return False  # Error code without content that is not 503, do not retry
+        xml = etree_without_namespace(resp.content.decode())
+        if self.service in ['autoscaling', 'cloudformation']:
+            if resp.status_code == 400 and self._extract_error(xml).code == 'Throttling':
+                return True
+        if self.service == 'ec2':
+            if self._extract_error(xml).code == 'RequestLimitExceeded':
+                return True
+        return False
+
+    def _extract_error(self, xml):
+        if self.service in ['autoscaling', 'cloudformation']:
+            return AwsApiError.from_element(xml.find('Error'))
+        elif self.service == 'ec2':
+            errors = xml.find('Errors').findall('Error')
+            if len(errors) == 1:
+                return AwsApiError.from_element(errors[0])
+            else:
+                return AwsApiError('AggregateError', '\n' + '\n'.join(
+                    [repr(AwsApiError.from_element(e)) for e in errors]))
+        else:
+            return AwsApiError('UnknownError-NoSchema', stringify_element(xml))
 
     @property
     def cloudformation(self):

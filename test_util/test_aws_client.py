@@ -1,18 +1,31 @@
 import os
+import pytest
 
-from test_util.aws import AwsApiClient, CfStack
+from test_util.aws import AwsApiClient, AwsApiError, CfStack, stringify_element
 
 
-def test_aws_auth():
-    aws_client = AwsApiClient('us-west-2', os.environ['AWS_ACCESS_KEY_ID'], os.environ['AWS_SECRET_ACCESS_KEY'])
-    r = aws_client.ec2.get('/', query='Action=DescribeInstances')
-    r.raise_for_status()
-    assert r.xml.find('reservationSet').findall('item')
+@pytest.fixture
+def aws_client():
+    return AwsApiClient('us-west-2', os.environ['AWS_ACCESS_KEY_ID'], os.environ['AWS_SECRET_ACCESS_KEY'])
 
-    r = aws_client.cloudformation.get('', query='Action=DescribeStacks&StackName=tamar-qnjdhxr')
-    r.raise_for_status()
 
-    stack = CfStack('tamar-qnjdhxr', aws_client)
-    from xml.etree import ElementTree
-    print(ElementTree.tostring(stack.get_stack_details()).decode())
+class TestEc2Api:
+    def test_dryrun(self, aws_client):
+        try:
+            aws_client.ec2.get('', query='Action=DescribeInstances&DryRun=true')
+        except AwsApiError as e:
+            assert e.code == 'DryRunOperation'
+
+
+class TestCloudformationApi:
+    def test_error(self, aws_client):
+        try:
+            aws_client.cloudformation.get('', query='Action=DescribeStacks&StackName=this-stack-totally-doesnt-exist')
+        except AwsApiError as e:
+            assert e.code == 'ValidationError'
+
+
+    # stack = CfStack('tamar-qnjdhxr', aws_client)
+    # from xml.etree import ElementTree
+    # print(ElementTree.tostring(stack.get_stack_details()).decode())
     # print('\n'.join(['{}: {}'.format(c.tag, c.text) for e in stack.get_stack_events() for c in list(e)]))
