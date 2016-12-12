@@ -1,7 +1,8 @@
 import os
+from urllib.parse import urlencode
 import pytest
 
-from test_util.aws import AwsApiClient, AwsApiError, CfStack, stringify_element
+from test_util.aws import AwsApiClient, AwsApiError, stringify_element
 
 
 @pytest.fixture
@@ -11,21 +12,47 @@ def aws_client():
 
 class TestEc2Api:
     def test_dryrun(self, aws_client):
-        try:
-            aws_client.ec2.get('', query='Action=DescribeInstances&DryRun=true')
-        except AwsApiError as e:
-            assert e.code == 'DryRunOperation'
+        with pytest.raises(AwsApiError) as e:
+            aws_client.ec2.get('', query=urlencode([
+                ('Action', 'DescribeInstances'),
+                ('DryRun', 'true')]))
+        assert e.value.code == 'DryRunOperation'
+
+    def test_error(self, aws_client):
+        with pytest.raises(AwsApiError) as e:
+            aws_client.ec2.get('', query=urlencode([
+                ('Action', 'DescribeInstances'),
+                ('InstanceId.1', 'this-instance-totally-doesnt-exist')]))
+        assert e.value.code == 'InvalidInstanceID.Malformed'
+
+    def test_good_response(self, aws_client):
+        r = aws_client.ec2.get('', query=urlencode([
+            ('Action', 'DescribeRegions')]))
+        region_list = [region.find('regionName').text for region
+                       in r.xml.find('regionInfo').findall('item')]
+        print(stringify_element(r.xml))
+        assert aws_client.region in region_list
 
 
 class TestCloudformationApi:
     def test_error(self, aws_client):
-        try:
-            aws_client.cloudformation.get('', query='Action=DescribeStacks&StackName=this-stack-totally-doesnt-exist')
-        except AwsApiError as e:
-            assert e.code == 'ValidationError'
+        with pytest.raises(AwsApiError) as e:
+            aws_client.cloudformation.get('', query=urlencode([
+                ('Action', 'DescribeStacks'),
+                ('StackName', 'this-stack-totally-doesnt-exist')]))
+        assert e.value.code == 'ValidationError'
+
+    def test_good_response(self, aws_client):
+        r = aws_client.cloudformation.get('', query='Action=DescribeAccountLimits')
+        limits = [lim.find('Name').text for lim in
+                  r.xml.find('DescribeAccountLimitsResult')
+                  .find('AccountLimits').findall('member')]
+        print(stringify_element(r.xml))
+        assert 'StackLimit' in limits
 
 
-    # stack = CfStack('tamar-qnjdhxr', aws_client)
-    # from xml.etree import ElementTree
-    # print(ElementTree.tostring(stack.get_stack_details()).decode())
-    # print('\n'.join(['{}: {}'.format(c.tag, c.text) for e in stack.get_stack_events() for c in list(e)]))
+class TestAutoscalingApi:
+    def test_error(self, aws_client):
+        r = aws_client.autoscaling.get('', query='Action=DescribeAccountLimits')
+        limits = [lim.tag for lim in list(r.xml.find('DescribeAccoutLimitsResult'))]
+        assert 'MaxNumberOfAutoScalingGroups' in limits
