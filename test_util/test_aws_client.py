@@ -2,7 +2,7 @@ import os
 from urllib.parse import urlencode
 import pytest
 
-from test_util.aws import AwsApiClient, AwsApiError, stringify_element
+from test_util.aws import AwsApiClient, AwsApiError
 
 
 @pytest.fixture
@@ -30,7 +30,6 @@ class TestEc2Api:
             ('Action', 'DescribeRegions')]))
         region_list = [region.find('regionName').text for region
                        in r.xml.find('regionInfo').findall('item')]
-        print(stringify_element(r.xml))
         assert aws_client.region in region_list
 
 
@@ -47,12 +46,18 @@ class TestCloudformationApi:
         limits = [lim.find('Name').text for lim in
                   r.xml.find('DescribeAccountLimitsResult')
                   .find('AccountLimits').findall('member')]
-        print(stringify_element(r.xml))
         assert 'StackLimit' in limits
 
 
 class TestAutoscalingApi:
-    def test_error(self, aws_client):
+    def test_good_response(self, aws_client):
         r = aws_client.autoscaling.get('', query='Action=DescribeAccountLimits')
-        limits = [lim.tag for lim in list(r.xml.find('DescribeAccoutLimitsResult'))]
+        limits = [lim.tag for lim in list(r.xml.find('DescribeAccountLimitsResult'))]
         assert 'MaxNumberOfAutoScalingGroups' in limits
+
+    def test_bad_response(self, aws_client):
+        with pytest.raises(AwsApiError) as e:
+            aws_client.autoscaling.get('', query=urlencode([
+                ('Action', 'DescribeAutoScalingInstances'),
+                ('InstanceIds.memeber.1', 'totally-not-a-real-instance')]))
+        assert e.value.code == 'ValidationError'

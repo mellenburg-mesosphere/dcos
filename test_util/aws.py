@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import time
 from io import StringIO
+from urllib.parse import urlencode
 from xml.etree import ElementTree
 
 import boto3
@@ -210,7 +211,10 @@ class AwsApiClient(ApiClient):
             return False  # Error code without content that is not 503, do not retry
         xml = etree_without_namespace(resp.content.decode())
         if self.service in ['autoscaling', 'cloudformation']:
-            if resp.status_code == 400 and self._extract_error(xml).code == 'Throttling':
+            code = self._extract_error(xml).code
+            if resp.status_code == 400 and code == 'Throttling':
+                return True
+            if resp.status_code == 500 and code == 'ResourceContention':
                 return True
         if self.service == 'ec2':
             if self._extract_error(xml).code == 'RequestLimitExceeded':
@@ -240,7 +244,7 @@ class AwsApiClient(ApiClient):
 
     @property
     def autoscaling(self):
-        return self.get_service('autoscaling', ' 2011-01-01')
+        return self.get_service('autoscaling', '2011-01-01')
 
 
 class BotoWrapper():
@@ -286,6 +290,27 @@ class CfStack():
         self.aws_client = aws_client
         self.stack_name = stack_name
         self._host_cache = {}
+
+    @classmethod
+    def create_stack(cls, stack_name: str, aws_client: AwsApiClient,
+                     template_url: str, parameters: dict,
+                     DisableRollback=True, deploy_timeout=60):
+        """
+        Args:
+        """
+        query_params = [
+            ('Action', 'CreateStack'),
+            ('Capabilities.member.1', 'CAPABILITY_IAM'),
+            ('DisableRollback', DisableRollback.lower()),
+            ('StackName', stack_name),
+            ('TemplateUrl', template_url)
+            ('TimeoutInMinutes', deploy_timeout)]
+        for i, (key, value) in parameters.items():
+            query_params.extend([
+                ('Parameters.member.{}.ParameterKey', i, key),
+                ('Parameters.member.{}.ParameterValue', i, value)])
+        aws_client.cloudformation.get('', query=urlencode(query_params))
+        return cls(stack_name, aws_client)
 
     def wait_for_status_change(self, state_1, state_2, wait_before_poll_min, timeout=60 * 60):
         """
@@ -351,14 +376,32 @@ class CfStack():
     def get_parameter(self, param):
         raise NotImplementedError()
 
-    def get_auto_scaling_instances(self, logical_id):
+    def get_auto_scaling_instance_ids(self, logical_id):
         """ get stack resources, then describe autoscaling groups and grab instance set
+        -take a desired logical id of a resource of this stack
+        -find the physical resource id by describing the stack resources and matching the logical id
+        -the physical resrouce id is the autoscaling group name, which can then be described
         """
-        ec2 = self.boto_wrapper.resource('ec2')
-        return [ec2.Instance(i['InstanceId']) for asg in self.boto_wrapper.client('autoscaling').
-                describe_auto_scaling_groups(
-                    AutoScalingGroupNames=[self.stack.Resource(logical_id).physical_resource_id])
-                ['AutoScalingGroups'] for i in asg['Instances']]
+        r = self.aws_client.cloudformation.get(
+            '', query='Action=DescribeStackResources&StackName={}'.format(self.stack_name))
+        resources = r.xml.find('DescribeStackResourcesResult').\
+            find('StackResources').findall('member')
+
+        asg_id = None
+        for resource in resources:
+            if resource.find('LogicalResourceId') == logical_id:
+                asg_id = resource.find('PhysicalResourceId')
+        if asg_id is None:
+            raise Exception('No resource with logicalId {}'.format(logical_id))
+
+        r = self.aws_client.autoscaling.get(
+            '', query='Action=DescribeAutoScalingGroups&'
+            'AutoScalingGroupNames.member.1={}'.format(asg_id))
+
+        for instance in r.xml.find('DescribeAutoScalingGroupsResult').\
+            find('AutoScalingGroups').findall('member')[0].\
+                find('Instances').findall('member'):
+            yield instance.find('InstanceId')
 
     def get_hosts_cached(self, group_name, refresh=False):
         if refresh or group_name not in self._host_cache:
@@ -371,16 +414,16 @@ class CfStack():
 class DcosCfSimple(CfStack):
     @classmethod
     def create(cls, stack_name, template_url, public_agents, private_agents,
-               admin_location, key_pair_name, boto_wrapper):
+               admin_location, key_pair_name, aws_client):
         parameters = {
             'KeyName': key_pair_name,
             'AdminLocation': admin_location,
             'PublicSlaveInstanceCount': str(public_agents),
             'SlaveInstanceCount': str(private_agents)}
-        stack = boto_wrapper.create_stack(stack_name, template_url, parameters)
+        cls.create_stack(stack_name, template_url, parameters)
         # Use stack_name as the binding identifier. At time of implementation,
         # stack.stack_name returns stack_id if Stack was created with ID
-        return cls(stack.stack.stack_name, boto_wrapper), SSH_INFO['coreos']
+        return cls(stack_name, aws_client), SSH_INFO['coreos']
 
     def delete(self):
         log.info('Starting deletion of CF stack')
