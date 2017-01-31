@@ -102,7 +102,9 @@ setup(
             'docker/dcos-builder/Dockerfile'
         ],
         'test_util': [
-            'launch.py'
+            'launch.py',
+            'vpc-cluster-template.json',
+            'vpc-ebs-only-cluster-template.json'
         ]
     },
     zip_safe=False

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import logging
+import pkg_resources
 import time
 
 import boto3
@@ -13,15 +14,14 @@ logging.basicConfig(format=LOGGING_FORMAT, level=logging.DEBUG)
 logging.getLogger('botocore').setLevel(logging.INFO)
 log = logging.getLogger(__name__)
 
-VPC_TEMPLATE_URL = 'https://s3.amazonaws.com/vpc-cluster-template/vpc-cluster-template.json'
-VPC_EBS_ONLY_TEMPLATE_URL = 'https://s3.amazonaws.com/vpc-cluster-template/vpc-ebs-only-cluster-template.json'
-
 
 def template_by_instance_type(instance_type):
     if instance_type.split('.')[0] in ('c4', 't2', 'm4'):
-        return VPC_EBS_ONLY_TEMPLATE_URL
+        return pkg_resources.resource_string(
+            'test_util', 'vpc-ebs-only-cluster-template.json').decode('utf-8')
     else:
-        return VPC_TEMPLATE_URL
+        return pkg_resources.resource_string(
+            'test_util', 'vpc-cluster-template.json').decode('utf-8')
 
 
 def param_dict_to_aws_format(user_parameters):
@@ -54,15 +54,19 @@ class BotoWrapper():
     def delete_key_pair(self, key_name):
         self.resource('ec2').KeyPair(key_name).delete()
 
-    def create_stack(self, name, template_url, parameters, deploy_timeout=60):
+    def create_stack(self, name, template_url, parameters, deploy_timeout=60, template_body=None):
         """Pulls template and checks user params versus temlate params.
         Does simple casting of strings or numbers
         Starts stack creation if validation is successful
         """
+        if template_body is not None:
+            template_kw = {'TemplateBody': template_body}
+        else:
+            template_kw = {'TemplateURL': template_url}
         log.info('Requesting AWS CloudFormation...')
         self.resource('cloudformation').create_stack(
             StackName=name,
-            TemplateURL=template_url,
+            **template_kw,
             DisableRollback=True,
             TimeoutInMinutes=deploy_timeout,
             Capabilities=['CAPABILITY_IAM'],
