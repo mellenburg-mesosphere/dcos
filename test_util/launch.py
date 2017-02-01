@@ -208,6 +208,11 @@ class AwsCloudformationLauncher(AbstractLauncher):
             raise LauncherError('StackNotFound', '{} is not accessible'.format(info['stack_name'])) from ex
 
 
+class AwsVpcLauncher(AbstractLauncher):
+    def create(self, config):
+        pass
+
+
 def get_launcher(launcher_type, provider_info):
     """Returns a launcher given a launcher type (string) and a dictionary of
     appropriate provier_info

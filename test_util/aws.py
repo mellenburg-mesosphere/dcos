@@ -54,19 +54,15 @@ class BotoWrapper():
     def delete_key_pair(self, key_name):
         self.resource('ec2').KeyPair(key_name).delete()
 
-    def create_stack(self, name, template_url, parameters, deploy_timeout=60, template_body=None):
+    def create_stack(self, name, template_url, parameters, deploy_timeout=60):
         """Pulls template and checks user params versus temlate params.
         Does simple casting of strings or numbers
         Starts stack creation if validation is successful
         """
-        if template_body is not None:
-            template_kw = {'TemplateBody': template_body}
-        else:
-            template_kw = {'TemplateURL': template_url}
         log.info('Requesting AWS CloudFormation...')
         self.resource('cloudformation').create_stack(
             StackName=name,
-            **template_kw,
+            TemplateURL=template_url,
             DisableRollback=True,
             TimeoutInMinutes=deploy_timeout,
             Capabilities=['CAPABILITY_IAM'],
@@ -315,15 +311,24 @@ class VpcCfStack(CfStack):
     def create(cls, stack_name, instance_type, instance_os, instance_count,
                admin_location, key_pair_name, boto_wrapper):
         ami_code = OS_AMIS[instance_os][boto_wrapper.region]
-        template_url = template_by_instance_type(instance_type)
+        template = template_by_instance_type(instance_type)
         parameters = {
             'KeyPair': key_pair_name,
             'AllowAccessFrom': admin_location,
             'ClusterSize': instance_count,
             'InstanceType': instance_type,
             'AmiCode': ami_code}
-        stack = boto_wrapper.create_stack(stack_name, template_url, param_dict_to_aws_format(parameters))
-        return cls(stack.stack.stack_name, boto_wrapper), OS_SSH_INFO[instance_os]
+        log.info('Requesting AWS CloudFormation...')
+        boto_wrapper.resource('cloudformation').create_stack(
+            StackName=stack_name,
+            TemplateBody=template,
+            DisableRollback=True,
+            TimeoutInMinutes=60,
+            Capabilities=['CAPABILITY_IAM'],
+            # this python API only accepts data in string format; cast as string here
+            # so that we may pass parameters directly from yaml (which parses numbers as non-strings)
+            Parameters=param_dict_to_aws_format(parameters))
+        return cls(stack_name, boto_wrapper), OS_SSH_INFO[instance_os]
 
     def delete(self):
         # boto stacks become unusable after deletion (e.g. status/info checks) if name-based
