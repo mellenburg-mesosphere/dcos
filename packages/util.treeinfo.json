@@ -2,6 +2,7 @@
   "core_package_list": [
     "dcos-image",
     "dcos-launch",
+    "dcos-installer",
     "python-flake8",
     "python-test-util"
   ]
