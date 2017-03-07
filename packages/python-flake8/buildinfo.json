@@ -1,0 +1,12 @@
+{
+  "requires": [
+    "python"
+  ],
+  "sources": {
+    "flake8": {
+      "kind": "url",
+      "url": "https://pypi.python.org/packages/cd/a6/1fe37679be3b224c96d8b64782d724d6a2c4212c8ddd914572fb8317a298/flake8-3.3.0-py2.py3-none-any.whl",
+      "sha1": "ff6e9d3f0f4ae7b6d4261f3173b4575790b3d00a"
+    }
+  }
+}
