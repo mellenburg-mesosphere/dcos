@@ -25,14 +25,11 @@ setup(
     packages=[
         'gen',
         'gen.build_deploy',
-        'launch',
         'pkgpanda',
         'pkgpanda.build',
         'pkgpanda.http',
         'release',
-        'release.storage',
-        'ssh',
-        'test_util'],
+        'release.storage'],
     install_requires=[
         'aiohttp==0.22.5',
         'analytics-python',
@@ -60,17 +57,8 @@ setup(
     entry_points={
         'console_scripts': [
             'release=release:main',
-            # Note: This test does not touch CCM, but this is here for backward compatible CI
-            'ccm-deploy-test=test_util.test_aws_vpc:main',
-            'test-aws-cf-deploy=test_util.test_aws_cf:main',
-            'test-upgrade-vpc=test_util.test_upgrade_vpc:main',
-            'test-azure-rm-deploy=test_util.test_azure:main',
             'pkgpanda=pkgpanda.cli:main',
             'mkpanda=pkgpanda.build.cli:main',
-            'dcos_installer=dcos_installer.cli:main',
-            'dcos-launch=launch.cli:main',
-            'dcos-exhibitor-migrate-status=dcos_installer.exhibitor_migrate:status',
-            'dcos-exhibitor-migrate-perform=dcos_installer.exhibitor_migrate:perform',
         ],
     },
     package_data={
@@ -100,11 +88,7 @@ setup(
         ] + get_advanced_templates(),
         'pkgpanda': [
             'docker/dcos-builder/Dockerfile'
-        ],
-        'launch': [
-            'sample_configs/*.yaml',
-            'dcos-launch.spec'
-        ],
+        ]
     },
     zip_safe=False
 )
