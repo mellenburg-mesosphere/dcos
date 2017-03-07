@@ -1,5 +1,6 @@
 {
   "core_package_list": [
-    "dcos-image"
+    "dcos-image",
+    "dcos-launch"
   ]
 }

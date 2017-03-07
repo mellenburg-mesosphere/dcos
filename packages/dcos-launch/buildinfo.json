@@ -1,0 +1,10 @@
+{
+  "requires": ["flask", "python", "python-requests"],
+  "sources": {
+    "pyinstaller": {
+      "kind": "url",
+      "url": "https://github.com/pyinstaller/pyinstaller/releases/download/v3.2.1/PyInstaller-3.2.1.zip",
+      "sha1": "d50d6ce0b423429e69f6b502a180fd0cd3ec9c38"
+    }
+  }
+}
