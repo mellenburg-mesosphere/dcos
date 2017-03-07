@@ -1,7 +1,5 @@
 {
   "core_package_list": [
-    "dcos-image",
-    "python-test-util",
-    "dcos-launch"
+    "dcos-image"
   ]
 }

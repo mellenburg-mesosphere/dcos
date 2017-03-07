@@ -23,7 +23,6 @@ setup(
         'Programming Language :: Python :: 3.5',
     ],
     packages=[
-        'dcos_installer',
         'gen',
         'gen.build_deploy',
         'launch',
