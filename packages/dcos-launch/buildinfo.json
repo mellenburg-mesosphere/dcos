@@ -10,9 +10,9 @@
       "python-ssh"],
   "sources": {
     "pyinstaller": {
-      "kind": "url",
-      "url": "https://github.com/pyinstaller/pyinstaller/releases/download/v3.2.1/PyInstaller-3.2.1.zip",
-      "sha1": "d50d6ce0b423429e69f6b502a180fd0cd3ec9c38"
+      "kind": "url_extract",
+      "url": "https://github.com/pyinstaller/pyinstaller/archive/8b491def32d02cedc912198930225cddfab2e871.zip",
+      "sha1": "ae310dac1848bc6ebada91915f0ba0aaa4089463"
     }
   }
 }

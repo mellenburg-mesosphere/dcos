@@ -107,7 +107,7 @@ class TestAwsOnprem:
     def test_onprem_from_bare_cluster(self, bare_cluster_onprem_config_path):
         get_validated_config(bare_cluster_onprem_config_path)
 
-    def test_error_with_nested_config(self, tmpdir):
+    def test_error_with_nested_config(self, tmpdir, mock_installer_env):
         with pytest.raises(LauncherError) as exinfo:
             get_validated_config(
                 get_temp_config_path(

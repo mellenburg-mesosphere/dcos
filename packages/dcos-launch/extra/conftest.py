@@ -1,12 +1,22 @@
+import atexit
+import copy
+import os
 from contextlib import contextmanager
 
 import pytest
 
+import dcos_installer
 import launch
 import ssh
 import test_util
 from launch.util import get_temp_config_path, stub
 from test_util.helpers import Host
+
+if 'DCOS_IMAGE_COMMIT' not in os.environ:
+    # This must be set for gen/build_deploy/util.py to be imported
+    # which is required by gen for bash validation
+    os.environ['DCOS_IMAGE_COMMIT'] = 'deadbeef'
+    atexit.register(os.unsetenv, 'DCOS_IMAGE_COMMIT')
 
 
 @contextmanager
@@ -85,6 +95,21 @@ def mocked_aws_zen_cf(monkeypatch, mocked_aws_cf):
 
 
 @pytest.fixture
+def mock_installer_env(monkeypatch):
+    """ onprem gen functions used for validation of the onprem config.yaml
+    expect to be run in the environment of either the build tree or the onprem
+    installer. The fixture mocks the docker container installer environment
+    """
+    monkeypatch.setattr(dcos_installer.config_util, 'installer_latest_complete_artifact',
+                        stub({'packages': []}))
+    env = copy.copy(os.environ)
+    os.environ['BOOTSTRAP_VARIANT'] = ''
+    os.environ['DCOS_IMAGE_COMMIT'] = 'deadbeef'
+    yield
+    os.environ = env
+
+
+@pytest.fixture
 def aws_cf_config_path(tmpdir, ssh_key_path, mocked_aws_cf):
     return get_temp_config_path(tmpdir, 'aws-cf.yaml', update={'ssh_private_key_filename': ssh_key_path})
 
@@ -115,12 +140,12 @@ def azure_with_helper_config_path(tmpdir):
 
 
 @pytest.fixture
-def aws_onprem_config_path(tmpdir, ssh_key_path):
+def aws_onprem_config_path(tmpdir, ssh_key_path, mock_installer_env):
     return get_temp_config_path(tmpdir, 'aws-onprem.yaml', update={'ssh_private_key_filename': ssh_key_path})
 
 
 @pytest.fixture
-def aws_onprem_with_helper_config_path(tmpdir):
+def aws_onprem_with_helper_config_path(tmpdir, mock_installer_env):
     return get_temp_config_path(tmpdir, 'aws-onprem-with-helper.yaml')
 
 
@@ -130,7 +155,7 @@ def aws_bare_cluster_config_path(tmpdir, ssh_key_path):
 
 
 @pytest.fixture
-def bare_cluster_onprem_config_path(tmpdir, ssh_key_path):
+def bare_cluster_onprem_config_path(tmpdir, ssh_key_path, mock_installer_env):
     platform_info_path = tmpdir.join('bare_cluster_info.json')
     platform_info_path.write("""
 {
