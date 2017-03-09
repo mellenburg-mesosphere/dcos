@@ -4,3 +4,6 @@ export LIB_INSTALL_DIR="$PKG_PATH/lib/python3.5/site-packages"
 mkdir -p "$LIB_INSTALL_DIR"
 
 pip3 install --no-deps --install-option="--prefix=$PKG_PATH" --root=/ /pkg/src/$PKG_NAME
+export PYTHONPATH=$LIB_INSTALL_DIR:$PYTHONPATH
+export PATH="$PKG_PATH/bin":$PATH
+py.test --help
