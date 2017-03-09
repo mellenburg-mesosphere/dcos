@@ -3,4 +3,13 @@ source /opt/mesosphere/environment.export
 export LIB_INSTALL_DIR="$PKG_PATH/lib/python3.5/site-packages"
 mkdir -p "$LIB_INSTALL_DIR"
 
-pip3 install --no-deps --install-option="--prefix=$PKG_PATH" --root=/ /pkg/src/$PKG_NAME
+# Test before install
+apt-get install -y openssh-server
+mkdir /var/run/sshd
+
+mkdir -p /test
+cp -R /pkg/extra/* /test
+cd /test
+py.test
+
+pip3 install --no-deps --install-option="--prefix=$PKG_PATH" /pkg/extra/
