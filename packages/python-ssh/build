@@ -3,10 +3,6 @@ source /opt/mesosphere/environment.export
 export LIB_INSTALL_DIR="$PKG_PATH/lib/python3.5/site-packages"
 mkdir -p "$LIB_INSTALL_DIR"
 
-# Test before install
-apt-get install -y openssh-server
-mkdir /var/run/sshd
-
 mkdir -p /test
 cp -R /pkg/extra/* /test
 cd /test
