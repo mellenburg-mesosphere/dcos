@@ -1,5 +1,12 @@
 {
-  "requires": ["flask", "python", "python-requests", "pytest", "python-tox"],
+  "requires": [
+      "flask",
+      "python",
+      "python-requests",
+      "pytest",
+      "python-tox",
+      "dcos-image",
+      "python-ssh"],
   "sources": {
     "pyinstaller": {
       "kind": "url",
