@@ -1,5 +1,5 @@
 {
-  "requires": ["flask", "python", "python-requests"],
+  "requires": ["flask", "python", "python-requests", "pytest", "python-tox"],
   "sources": {
     "pyinstaller": {
       "kind": "url",
