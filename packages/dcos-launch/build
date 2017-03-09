@@ -4,10 +4,10 @@ export LIB_INSTALL_DIR="$PKG_PATH/lib/python3.5/site-packages"
 mkdir -p "$LIB_INSTALL_DIR"
 
 mkdir -p /build
+# Copy from the ro /pkg/extra to a rw folder.
+cp -r /pkg/extra/* /build
+cd /build
+py.test
 # only need to unpack pyinstaller to use it
 unzip /pkg/src/pyinstaller/PyInstaller-3.2.1.zip -d /build/
-# Copy from the ro /pkg/extra to a rw folder.
-cp -r /pkg/extra/* /build/
-cd /build
-py.test launch
 ./PyInstaller-3.2.1/pyinstaller.py dcos-launch.spec

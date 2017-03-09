@@ -1,11 +1,12 @@
 {
   "requires": [
+      "dcos-installer",
       "flask",
       "python",
       "python-requests",
       "pytest",
       "python-tox",
-      "dcos-image-deps",
+      "python-test-util",
       "python-ssh"],
   "sources": {
     "pyinstaller": {
