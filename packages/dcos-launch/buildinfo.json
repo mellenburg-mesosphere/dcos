@@ -5,7 +5,7 @@
       "python-requests",
       "pytest",
       "python-tox",
-      "dcos-image",
+      "dcos-image-deps",
       "python-ssh"],
   "sources": {
     "pyinstaller": {
