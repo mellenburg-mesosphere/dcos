@@ -452,6 +452,9 @@ def symlink_tree(src, dest):
                 os.symlink(src_path, dest_path)
             except FileNotFoundError as ex:
                 raise ConflictingFile(src_path, dest_path, ex) from ex
+            except FileExistsError:
+                # This has already been installed, assume doubly-included dependencies
+                pass
 
 
 # Manages a systemd-sysusers user set.
