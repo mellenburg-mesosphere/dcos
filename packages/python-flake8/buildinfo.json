@@ -7,6 +7,21 @@
       "kind": "url",
       "url": "https://pypi.python.org/packages/cd/a6/1fe37679be3b224c96d8b64782d724d6a2c4212c8ddd914572fb8317a298/flake8-3.3.0-py2.py3-none-any.whl",
       "sha1": "ff6e9d3f0f4ae7b6d4261f3173b4575790b3d00a"
+    },
+    "mccabe": {
+      "kind": "url",
+      "url": "https://pypi.python.org/packages/87/89/479dc97e18549e21354893e4ee4ef36db1d237534982482c3681ee6e7b57/mccabe-0.6.1-py2.py3-none-any.whl",
+      "sha1": "bfd4cdc5278684e06b55ce935011b8396497adf4"
+    },
+    "pycodestyle": {
+      "kind": "url",
+      "url": "https://pypi.python.org/packages/e4/81/78fe51eb4038d1388b7217dd63770b0f428370207125047312886c923b26/pycodestyle-2.3.1-py2.py3-none-any.whl",
+      "sha1": "917ddbb63ec5f811362de4c74d83a32df10dacf7"
+    },
+    "pyflakes": {
+      "kind": "url",
+      "url": "https://pypi.python.org/packages/27/49/924098b3b85c286696f37e014475d79471ffc44509613af420645a3c12cb/pyflakes-1.5.0-py2.py3-none-any.whl",
+      "sha1": "94482d18821e5b1b789a07d466f0d89ab0d8bac1"
     }
   }
 }

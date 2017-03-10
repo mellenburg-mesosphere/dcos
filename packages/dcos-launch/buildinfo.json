@@ -3,6 +3,7 @@
       "dcos-installer",
       "flask",
       "python",
+      "python-flake8",
       "python-requests",
       "pytest",
       "python-tox",
