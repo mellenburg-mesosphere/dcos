@@ -7,6 +7,7 @@ pip3 install --no-deps --install-option="--prefix=$PKG_PATH" --root=/ /pkg/src/$
 
 mkdir -p /test
 cp -r /pkg/src/$PKG_NAME/* /test
+cd /test
 py.test gen/ release/ pkgpanda/build/tests/build_integration_test.py
 
 mkdir -p "$PKG_PATH/bin/dcos-path"

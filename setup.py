@@ -31,8 +31,6 @@ setup(
         'release',
         'release.storage'],
     install_requires=[
-        'aiohttp==0.22.5',
-        'analytics-python',
         'coloredlogs',
         'Flask',
         'flask-compress',
@@ -48,7 +46,6 @@ setup(
         'docopt',
         'passlib',
         'py',
-        'pyinstaller==3.2',
         'pyyaml',
         'requests==2.10.0',
         'retrying',
