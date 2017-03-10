@@ -1,7 +1,7 @@
 import pycodestyle
 
-from __version__ import PLUGIN_NAME, PLUGIN_VERSION
-from check_rules import regex_rules
+from flake8_dcos_lint.__version__ import PLUGIN_NAME, PLUGIN_VERSION
+from flake8_dcos_lint.check_rules import regex_rules
 
 
 def flake8extn(func):
