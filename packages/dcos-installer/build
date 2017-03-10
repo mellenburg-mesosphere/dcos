@@ -11,3 +11,6 @@ pip3 install --no-deps --install-option="--prefix=$PKG_PATH" --root=/ /build
 #  Make the UI assets available to the installer
 mkdir -p "$LIB_INSTALL_DIR/dcos_installer/"
 ln -s /opt/mesosphere/active/dcos-installer-ui/usr/ "$LIB_INSTALL_DIR/dcos_installer/templates"
+
+cd /build
+py.test
