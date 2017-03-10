@@ -8,6 +8,5 @@ mkdir -p /build
 cp -r /pkg/extra/* /build
 cd /build
 py.test
-flake8
 python3 /pkg/src/pyinstaller/pyinstaller.py dcos-launch.spec
 # TODO: trasnsfer out dcos-launch to top-level artifacts

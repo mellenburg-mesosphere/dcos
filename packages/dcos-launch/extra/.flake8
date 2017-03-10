@@ -1,4 +1,4 @@
 [flake8]
 max-line-length=120
-application-import-names=launch
+application-import-names=dcos_installer,launch,pkgpanda,ssh,test_util
 import-order-style=smarkets
