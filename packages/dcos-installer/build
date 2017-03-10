@@ -15,7 +15,7 @@ done
 cp -r /pkg/extra/* /build
 
 # Add the installer library
-pip3 install --no-deps --install-option="--prefix=$PKG_PATH" --root=/ /build/dcos_installer
+pip3 install --no-deps --install-option="--prefix=$PKG_PATH" /build/dcos_installer
 
 #  Make the UI assets available to the installer
 mkdir -p "$LIB_INSTALL_DIR/dcos_installer/"

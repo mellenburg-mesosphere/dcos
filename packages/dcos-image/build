@@ -5,8 +5,9 @@ mkdir -p "$LIB_INSTALL_DIR"
 
 pip3 install --no-deps --install-option="--prefix=$PKG_PATH" --root=/ /pkg/src/$PKG_NAME
 
-mkdir -p "$LIB_INSTALL_DIR/dcos_installer/"
-ln -s /opt/mesosphere/active/dcos-installer-ui/usr/ "$LIB_INSTALL_DIR/dcos_installer/templates"
+mkdir -p /test
+cp -r /pkg/src/$PKG_NAME/* /test
+py.test gen/ release/ pkgpanda/build/tests/build_integration_test.py
 
 mkdir -p "$PKG_PATH/bin/dcos-path"
 cp /pkg/extra/dcos-shell "$PKG_PATH/bin/dcos-path/dcos-shell"
