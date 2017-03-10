@@ -24,5 +24,7 @@ ln -s /opt/mesosphere/active/dcos-installer-ui/usr/ "$LIB_INSTALL_DIR/dcos_insta
 
 export PYTHONPATH=$LIB_INSTALL_DIR:$PYTHONPATH
 export PATH="$PKG_PATH/bin":$PATH
+ls $PKG_PATH/bin
+which dcos_installer
 cd /build
 py.test
