@@ -1,8 +1,25 @@
 {
   "requires": ["python"],
-  "single_source": {
-    "kind": "url",
-    "url": "https://pypi.python.org/packages/7d/8c/58d0e478afe366fc1c5ca5994558adf9375d7e60ac866d8fdb6046e0e776/tox-2.3.1-py2.py3-none-any.whl",
-    "sha1": "c8742b73d3a16174a06d36fb73166b424e9f342a"
+  "sources": {
+      "tox": {
+        "kind": "url",
+        "url": "https://pypi.python.org/packages/7d/8c/58d0e478afe366fc1c5ca5994558adf9375d7e60ac866d8fdb6046e0e776/tox-2.3.1-py2.py3-none-any.whl",
+        "sha1": "c8742b73d3a16174a06d36fb73166b424e9f342a"
+      },
+      "pluggy": {
+        "kind": "url",
+        "url": "https://pypi.python.org/packages/52/5e/3e63895c9730f37195db7d3f3a6465b7ffce08871ca217947b81f452ce62/pluggy-0.4.0-py2.py3-none-any.whl",
+        "sha1": "f346586bca1fd92c07dad2a9aa3768829b6e6816"
+      },
+      "py": {
+        "kind": "url",
+        "url": "https://pypi.python.org/packages/02/79/ea0c2750dde4b19bf2e305d201e4dd488f6671b51f52d8cf87aba174a158/py-1.4.32-py2.py3-none-any.whl",
+        "sha1": "bd020d873093ee3b47b91a9029dbb0ef2d46280f"
+      },
+      "virtualenv": {
+        "kind": "url",
+        "url": "https://pypi.python.org/packages/6f/86/3dc328ee7b1a6419ebfac7896d882fba83c48e3561d22ddddf38294d3e83/virtualenv-15.1.0-py2.py3-none-any.whl",
+        "sha1": "0def1fa94de51aa56e24eaefe2173df7249e6ded"
+      }
   }
 }
