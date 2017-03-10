@@ -12,10 +12,11 @@ for package in aiohttp waitress; do
   pip3 install --no-deps --install-option="--prefix=$PKG_PATH" --root=/ /pkg/src/$package
 done
 # Copy from the ro /pkg/extra to a rw folder.
+mkdir -p /build
 cp -r /pkg/extra/* /build
 
 # Add the installer library
-pip3 install --no-deps --install-option="--prefix=$PKG_PATH" /build/dcos_installer
+pip3 install --no-deps --install-option="--prefix=$PKG_PATH" --root=/ /build/
 
 #  Make the UI assets available to the installer
 mkdir -p "$LIB_INSTALL_DIR/dcos_installer/"
