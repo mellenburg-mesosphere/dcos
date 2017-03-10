@@ -1,6 +1,7 @@
 {
   "requires": [
     "dcos-image",
+    "pytest",
     "python",
     "python-kazoo",
     "python-requests"
