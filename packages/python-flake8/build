@@ -4,10 +4,8 @@ export LIB_INSTALL_DIR="$PKG_PATH/lib/python3.5/site-packages"
 mkdir -p "$LIB_INSTALL_DIR"
 
 # Install flake8 first
-for package in mccabe pycodestyle pyflakes flake8; do
+for package in mccabe pycodestyle pyflakes flake8 pep8-naming flake8-import-order; do
   pip3 install --verbose --no-deps --no-index --prefix $PKG_PATH /pkg/src/$package/*.whl
 done
-# Copy from the ro /pkg/extra to a rw folder.
-cp -r /pkg/extra /build
 
-pip3 install --no-deps --install-option="--prefix=$PKG_PATH" --root=/ /build
+pip3 install --no-deps --install-option="--prefix=$PKG_PATH" --root=/ /pkg/extra/

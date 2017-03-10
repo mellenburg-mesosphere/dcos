@@ -22,6 +22,17 @@
       "kind": "url",
       "url": "https://pypi.python.org/packages/27/49/924098b3b85c286696f37e014475d79471ffc44509613af420645a3c12cb/pyflakes-1.5.0-py2.py3-none-any.whl",
       "sha1": "94482d18821e5b1b789a07d466f0d89ab0d8bac1"
+    },
+    "pep8-naming": {
+      "kind": "url",
+      "url": "https://pypi.python.org/packages/01/81/1bfdc498b7b24661f64502c99adeb7c4c8d86d61eba0e110dbadc5bf1142/pep8_naming-0.4.1-py2.py3-none-any.whl",
+      "sha1": "81bcbe4a78aae0ebc4352c12a43cc8a964f43d2b"
+    },
+    "flake8-import-order": {
+      "kind": "url",
+      "url": "https://pypi.python.org/packages/6f/a3/9873a279c4cca791ab0e8fca694aa682bdd3297339254459cd6edfdc58bf/flake8_import_order-0.12-py2.py3-none-any.whl",
+      "sha1": "342df9ab522561a1d9222ecde589deb9504e13ba"
     }
+
   }
 }
