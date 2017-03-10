@@ -4,6 +4,7 @@
     "dcos-launch",
     "dcos-installer",
     "python-flake8",
+    "python-ssh",
     "python-test-util"
   ]
 }
