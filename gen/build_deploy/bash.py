@@ -8,7 +8,6 @@ import tempfile
 import pkg_resources
 import py
 
-import dcos_installer.config_util
 import gen.build_deploy.util as util
 import gen.template
 import pkgpanda
@@ -17,6 +16,15 @@ from gen.calc import calculate_environment_variable
 from gen.internals import Source
 from pkgpanda.build.src_fetchers import GitLocalSrcFetcher
 from pkgpanda.util import logger
+
+
+def installer_latest_complete_artifact(variant_str):
+    """ This code is intended to only run inside of the onprem installer
+    environment and therefore can expect this magic path
+    """
+    return pkgpanda.util.load_json(
+        'artifacts/complete/{}complete.latest.json'.format(
+            pkgpanda.util.variant_prefix(pkgpanda.util.variant_object(variant_str))))
 
 
 onprem_source = Source(entry={
@@ -30,7 +38,7 @@ onprem_source = Source(entry={
     'must': {
         'provider': 'onprem',
         'package_ids': lambda bootstrap_variant: json.dumps(
-            dcos_installer.config_util.installer_latest_complete_artifact(bootstrap_variant)['packages']
+            installer_latest_complete_artifact(bootstrap_variant)['packages']
         ),
     }
 })
