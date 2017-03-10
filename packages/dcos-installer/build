@@ -3,14 +3,25 @@ source /opt/mesosphere/environment.export
 export LIB_INSTALL_DIR="$PKG_PATH/lib/python3.5/site-packages"
 mkdir -p "$LIB_INSTALL_DIR"
 
-# Copy from the ro /pkg/extra to a rw folder.
-cp -r /pkg/extra /build
+# Install wheels.
+for package in analytics-python beautifulsoup4 keyring webob webtest webtest-aiohttp; do
+  pip3 install --no-deps --no-index --target="$LIB_INSTALL_DIR" /pkg/src/$package/*.whl
+done
 
-pip3 install --no-deps --install-option="--prefix=$PKG_PATH" --root=/ /build
+for package in aiohttp waitress; do
+  pip3 install --no-deps --install-option="--prefix=$PKG_PATH" --root=/ /pkg/src/$package
+done
+# Copy from the ro /pkg/extra to a rw folder.
+cp -r /pkg/extra/* /build
+
+# Add the installer library
+pip3 install --no-deps --install-option="--prefix=$PKG_PATH" --root=/ /build/dcos_installer
 
 #  Make the UI assets available to the installer
 mkdir -p "$LIB_INSTALL_DIR/dcos_installer/"
 ln -s /opt/mesosphere/active/dcos-installer-ui/usr/ "$LIB_INSTALL_DIR/dcos_installer/templates"
 
+export PYTHONPATH=$LIB_INSTALL_DIR:$PYTHONPATH
+export PATH="$PKG_PATH/bin":$PATH
 cd /build
 py.test

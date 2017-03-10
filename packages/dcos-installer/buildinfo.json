@@ -1,3 +1,49 @@
 {
-  "requires": ["dcos-image", "pytest", "dcos-installer-ui", "python-ssh"]
+  "requires": [
+      "dcos-image",
+      "pytest",
+      "dcos-installer-ui",
+      "python-ssh"],
+  "sources": {
+    "aiohttp": {
+      "kind": "url_extract",
+      "url": "https://pypi.python.org/packages/55/9d/38fb3cb174f4723b50a3f0593e18a51418c9a73a7857fdcaee46b83ff1c4/aiohttp-0.22.5.tar.gz",
+      "sha1": "d391ae04d2aa97be14ef7de13e7ee2b9939ce8b4"
+    },
+    "analytics-python": {
+      "kind": "url",
+      "url": "https://pypi.python.org/packages/39/db/ba6ce2c3f13dd046eec3a7767a7d10607c15dc8b23d68bc125ad577f924f/analytics_python-1.2.3-py2.py3-none-any.whl",
+      "sha1": "218ff1fdecb2a0d06499618a6d0e65fcecf50c19"
+    },
+    "beautifulsoup4": {
+      "kind": "url",
+      "url": "https://pypi.python.org/packages/3.4/b/beautifulsoup4/beautifulsoup4-4.4.1-py3-none-any.whl",
+      "sha1": "774554b2c16c334f2220800950026384cae713ac"
+    },
+    "keyring": {
+      "kind": "url",
+      "url": "https://pypi.python.org/packages/9a/1e/8b0290dc98de928b04c6fc73c301faebf52b9479a3c772edc77b92b4d6f6/keyring-9.1-py2.py3-none-any.whl",
+      "sha1": "9c1d41e9e9e30c02cb49f4d6c7f377311c0f347d"
+    },
+    "waitress": {
+      "kind": "url_extract",
+      "url": "https://pypi.python.org/packages/source/w/waitress/waitress-0.8.10.tar.gz",
+      "sha1": "ed41791a3c7dcc8e8416d37bda87983c8402db87"
+    },
+    "webob": {
+      "kind": "url",
+      "url": "https://pypi.python.org/packages/3.4/W/WebOb/WebOb-1.5.1-py2.py3-none-any.whl",
+      "sha1": "36e038d2158248d27ec109ff7d23f5fa4e112483"
+    },
+    "webtest": {
+      "kind": "url",
+      "url": "https://pypi.python.org/packages/cf/1e/13924e8550ae1861f17d265204c60e34433411f1878132fa93f5ed341398/WebTest-2.0.26-py2.py3-none-any.whl",
+      "sha1": "4215f0a416cb3d6270fa0c0e0239536092a0dd59"
+    },
+    "webtest-aiohttp": {
+      "kind": "url",
+      "url": "https://pypi.python.org/packages/b6/b0/9ede58f937212f688de8e1b7997125bb17d58ba3e42f97c8fa16167e7dc1/webtest_aiohttp-1.1.0-py2.py3-none-any.whl",
+      "sha1": "ef7e08c72ea8cf996446af5cd427c953859a4958"
+    }
+  }
 }
