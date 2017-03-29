@@ -19,7 +19,7 @@ from azure.mgmt.resource.resources.models import (DeploymentMode,
                                                   DeploymentProperties,
                                                   ResourceGroup)
 
-from test_util.helpers import Host
+from test_util.helpers import AbstractCluster, Host
 
 log = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ def nic_to_host(nic):
     return Host(ip_config.private_ip_address, ip_config.public_ip_address.ip_address)
 
 
-class AzureWrapper:
+class AzureWrapper(AbstractCluster):
     def __init__(self, location: str, subscription_id: str, client_id: str, client_secret: str, tenant_id: str):
         self.credentials = ServicePrincipalCredentials(
             client_id=client_id,

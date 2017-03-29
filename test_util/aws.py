@@ -13,7 +13,7 @@ DcosZenCfStack: Represents DC/OS  deployed from a zen template
 MasterStack: thin wrapper for master stack in a zen template
 PrivateAgentStack: thin wrapper for public agent stack in a zen template
 PublicAgentStack: thin wrapper for public agent stack in a zen template
-VpcCfStack: Represents a homogeneous cluster of hosts with a specific AMI
+BareCfStack: Represents a homogeneous cluster of hosts with a specific AMI and no DC/OS
 """
 import logging
 import time
@@ -22,7 +22,7 @@ import boto3
 import retrying
 from botocore.exceptions import ClientError
 
-from test_util.helpers import Host, retry_boto_rate_limits, SshInfo
+from test_util.helpers import AbstractCluster, Host, retry_boto_rate_limits, SshInfo
 
 log = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ def fetch_stack(stack_name, boto_wrapper):
             log.debug('Using Basic DC/OS Cloudformation interface')
             return DcosCfStack(stack_name, boto_wrapper)
     log.debug('Using VPC Cloudformation interface')
-    return VpcCfStack(stack_name, boto_wrapper)
+    return BareCfStack(stack_name, boto_wrapper)
 
 
 class BotoWrapper():
@@ -269,7 +269,7 @@ class CleanupS3BucketMixin:
         super().delete()
 
 
-class DcosCfStack(CleanupS3BucketMixin, CfStack):
+class DcosCfStack(CleanupS3BucketMixin, CfStack, AbstractCluster):
     """ This abstraction will work for a simple DC/OS template.
     A simple template has its exhibitor bucket and auto scaling groups
     for each of the master, public agent, and private agent groups
@@ -334,7 +334,7 @@ class PublicAgentStack(CfStack):
             self.stack.Resource('PublicAgentServerGroup').physical_resource_id)
 
 
-class DcosZenCfStack(CfStack):
+class DcosZenCfStack(CfStack, AbstractCluster):
     """Zen stacks are stacks that have the masters, infra, public agents, and private
     agents split into resources stacks under one zen stack
     """
@@ -421,7 +421,7 @@ class DcosZenCfStack(CfStack):
         return instances_to_hosts(self.public_agent_instances)
 
 
-class VpcCfStack(CfStack):
+class BareCfStack(CfStack, AbstractCluster):
     @classmethod
     def create(cls, stack_name, instance_type, instance_os, instance_count,
                admin_location, key_pair_name, boto_wrapper):

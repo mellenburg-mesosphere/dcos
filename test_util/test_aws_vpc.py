@@ -164,7 +164,7 @@ def main():
     write_string('ssh_key', ssh_key)
 
     if options.cluster_ami:
-        vpc = test_util.aws.VpcCfStack.create_from_ami(
+        vpc = test_util.aws.BareCfStack.create_from_ami(
             stack_name=unique_cluster_id,
             instance_type=options.instance_type,
             instance_ami=options.cluster_ami,
@@ -175,7 +175,7 @@ def main():
             boto_wrapper=bw)
         ssh_info = SshInfo(user=options.cluster_ami_ssh_user, home_dir=options.cluster_ami_ssh_home_dir)
     else:
-        vpc, ssh_info = test_util.aws.VpcCfStack.create(
+        vpc, ssh_info = test_util.aws.BareCfStack.create(
             stack_name=unique_cluster_id,
             instance_type=options.instance_type,
             instance_os=os_name,
