@@ -5,6 +5,7 @@ import os
 import pprint
 import random
 import uuid
+from typing import Iterator, Tuple
 
 import pytest
 import retrying
@@ -19,19 +20,6 @@ from test_helpers import expanded_config
 log = logging.getLogger(__name__)
 
 TEST_APP_NAME_FMT = 'upgrade-{}'
-
-curl_cmd = [
-    'curl',
-    '--silent',
-    '--verbose',
-    '--show-error',
-    '--fail',
-    '--location',
-    '--keepalive-time', '2',
-    '--retry', '20',
-    '--speed-limit', '100000',
-    '--speed-time', '60',
-]
 
 
 @pytest.fixture
@@ -290,9 +278,18 @@ def bootstrap_home(ssher, bootstrap_host):
     return ssher.get_home_dir(bootstrap_host)
 
 
+def config_overrides() -> Iterator[Tuple[str, str]]:
+    prefix = 'DCOS_UPGRADE_TEST_CONFIG_'
+    for env_var in os.environ:
+        if env_var.startswith(prefix):
+            yield env_var.replace(prefix, ''), os.environ[env_var]
+
+
 @pytest.skipif(expanded_config['provider'] != 'onprem', reason='Upgrade only supported for onprem provider')
 @pytest.fixture(scope='session')
-def upgrade_dcos(dcos_api_session, ssher, installer_path, bootstrap_home, config):
+def upgrade_dcos(dcos_api_session, ssher, installer_path, bootstrap_home, config_overrides):
+    """
+    """
     # check to see if previous installer is running and terminate if necessary
     version = dcos_api_session.get_version()
     ssher.command(['bash', '-c', "'docker ps -a | grep dcos-genconf | xargs docker kill'"])
@@ -340,7 +337,18 @@ def upgrade_dcos(dcos_api_session, ssher, installer_path, bootstrap_home, config
         for host in hosts:
             log.info('Upgrading {}: {}'.format(role_name, repr(host)))
             with ssher.tunnel(bootstrap_host) as tunnel:
-                tunnel.command(curl_cmd + ['--remote-name', upgrade_script_path])
+                tunnel.command([
+                    'curl',
+                    '--silent',
+                    '--verbose',
+                    '--show-error',
+                    '--fail',
+                    '--location',
+                    '--keepalive-time', '2',
+                    '--retry', '20',
+                    '--speed-limit', '100000',
+                    '--speed-time', '60',
+                    '--remote-name', upgrade_script_path])
                 tunnel.command(['sudo', 'bash', 'dcos_node_upgrade.sh'])
                 wait_metric = {
                     'master': 'registrar/log/recovered',
